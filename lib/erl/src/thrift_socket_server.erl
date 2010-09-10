@@ -1,14 +1,23 @@
-%%%-------------------------------------------------------------------
-%%% File    : thrift_socket_server.erl
-%%% Author  : eugene letuchy <eletuchy@facebook.com>
-%%% Description : A rewrite of thrift_server, based quite heavily
-%%%         on the mochiweb_socket_server module of mochiweb
-%%% Created :  3 Mar 2008 by eugene letuchy <eletuchy@facebook.com>
-%%%-------------------------------------------------------------------
--module(thrift_socket_server).
+%%
+%% Licensed to the Apache Software Foundation (ASF) under one
+%% or more contributor license agreements. See the NOTICE file
+%% distributed with this work for additional information
+%% regarding copyright ownership. The ASF licenses this file
+%% to you under the Apache License, Version 2.0 (the
+%% "License"); you may not use this file except in compliance
+%% with the License. You may obtain a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied. See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
 
--author('eletuchy@facebook.com').
--author('todd@lipcon.org').
+-module(thrift_socket_server).
 
 -behaviour(gen_server).
 
@@ -28,7 +37,8 @@
          ip=any,
          listen=null,
          acceptor=null,
-         socket_opts=[{recv_timeout, 500}]
+         socket_opts=[{recv_timeout, 500}],
+         framed=false
         }).
 
 start(State=#thrift_socket_server{}) ->
@@ -92,7 +102,9 @@ parse_options([{max, Max} | Rest], State) ->
                  Max when is_integer(Max) ->
                      Max
              end,
-    parse_options(Rest, State#thrift_socket_server{max=MaxInt}).
+    parse_options(Rest, State#thrift_socket_server{max=MaxInt});
+parse_options([{framed, Framed} | Rest], State) when is_boolean(Framed) ->
+    parse_options(Rest, State#thrift_socket_server{framed=Framed}).
 
 start_server(State=#thrift_socket_server{name=Name}) ->
     case Name of
@@ -156,22 +168,26 @@ new_acceptor(State=#thrift_socket_server{max=0}) ->
     State#thrift_socket_server{acceptor=null};
 new_acceptor(State=#thrift_socket_server{acceptor=OldPid, listen=Listen,
                                          service=Service, handler=Handler,
-                                         socket_opts=Opts
+                                         socket_opts=Opts, framed=Framed
                                         }) ->
     Pid = proc_lib:spawn_link(?MODULE, acceptor_loop,
-                              [{self(), Listen, Service, Handler, Opts}]),
+                              [{self(), Listen, Service, Handler, Opts, Framed}]),
 %%     error_logger:info_msg("Spawning new acceptor: ~p => ~p", [OldPid, Pid]),
     State#thrift_socket_server{acceptor=Pid}.
 
-acceptor_loop({Server, Listen, Service, Handler, SocketOpts})
+acceptor_loop({Server, Listen, Service, Handler, SocketOpts, Framed})
   when is_pid(Server), is_list(SocketOpts) ->
     case catch gen_tcp:accept(Listen) of % infinite timeout
         {ok, Socket} ->
             gen_server:cast(Server, {accepted, self()}),
             ProtoGen = fun() ->
                                {ok, SocketTransport}   = thrift_socket_transport:new(Socket, SocketOpts),
-                               {ok, BufferedTransport} = thrift_buffered_transport:new(SocketTransport),
-                               {ok, Protocol}          = thrift_binary_protocol:new(BufferedTransport),
+                               {ok, Transport}         =
+                                   case Framed of
+                                       true  -> thrift_framed_transport:new(SocketTransport);
+                                       false -> thrift_buffered_transport:new(SocketTransport)
+                                   end,
+                               {ok, Protocol}          = thrift_binary_protocol:new(Transport),
                                {ok, IProt=Protocol, OProt=Protocol}
                        end,
             thrift_processor:init({Server, ProtoGen, Service, Handler});

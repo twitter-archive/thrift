@@ -1,8 +1,21 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include <concurrency/TimerManager.h>
 #include <concurrency/PosixThreadFactory.h>
@@ -12,14 +25,13 @@
 #include <assert.h>
 #include <iostream>
 
-namespace facebook { namespace thrift { namespace concurrency { namespace test {
+namespace apache { namespace thrift { namespace concurrency { namespace test {
 
-using namespace facebook::thrift::concurrency;
+using namespace apache::thrift::concurrency;
 
 /**
  * ThreadManagerTests class
  *
- * @author marc
  * @version $Id:$
  */
 class TimerManagerTests {
@@ -94,12 +106,25 @@ class TimerManagerTests {
 
       assert(timerManager.state() == TimerManager::STARTED);
 
-      shared_ptr<TimerManagerTests::Task> task = shared_ptr<TimerManagerTests::Task>(new TimerManagerTests::Task(_monitor, timeout));
+      // Don't create task yet, because its constructor sets the expected completion time, and we
+      // need to delay between inserting the two tasks into the run queue.
+      shared_ptr<TimerManagerTests::Task> task;
 
       {
         Synchronized s(_monitor);
 
         timerManager.add(orphanTask, 10 * timeout);
+
+        try {
+          // Wait for 1 second in order to give timerManager a chance to start sleeping in response
+          // to adding orphanTask. We need to do this so we can verify that adding the second task
+          // kicks the dispatcher out of the current wait and starts the new 1 second wait.
+          _monitor.wait (1000);
+          assert (0 == "ERROR: This wait should time out. TimerManager dispatcher may have a problem.");
+        } catch (TimedOutException &ex) {
+        }
+
+        task.reset (new TimerManagerTests::Task(_monitor, timeout));
 
         timerManager.add(task, timeout);
 
@@ -126,5 +151,5 @@ class TimerManagerTests {
 
 const double TimerManagerTests::ERROR = .20;
 
-}}}} // facebook::thrift::concurrency
+}}}} // apache::thrift::concurrency
 

@@ -1,4 +1,23 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
+
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
 
 require 5.6.0;
 use strict;
@@ -7,14 +26,14 @@ use Data::Dumper;
 use Time::HiRes qw(gettimeofday);
 
 use lib '../../lib/perl/lib';
-use lib '../gen-perl';
+use lib 'gen-perl';
 
 use Thrift;
 use Thrift::BinaryProtocol;
 use Thrift::Socket;
 use Thrift::BufferedTransport;
 
-use ThriftTest;
+use ThriftTest::ThriftTest;
 use ThriftTest::Types;
 
 $|++;
@@ -28,7 +47,7 @@ my $socket = new Thrift::Socket($host, $port);
 my $bufferedSocket = new Thrift::BufferedTransport($socket, 1024, 1024);
 my $transport = $bufferedSocket;
 my $protocol = new Thrift::BinaryProtocol($transport);
-my $testClient = new ThriftTestClient($protocol);
+my $testClient = new ThriftTest::ThriftTestClient($protocol);
 
 eval{
 $transport->open();
@@ -177,23 +196,23 @@ print(" = {".join(",",@$listin)."}\n");
 # ENUM TEST
 #
 print("testEnum(ONE)");
-my $ret = $testClient->testEnum(Numberz::ONE);
+my $ret = $testClient->testEnum(ThriftTest::Numberz::ONE);
 print(" = $ret\n");
 
 print("testEnum(TWO)");
-$ret = $testClient->testEnum(Numberz::TWO);
+$ret = $testClient->testEnum(ThriftTest::Numberz::TWO);
 print(" = $ret\n");
 
 print("testEnum(THREE)");
-$ret = $testClient->testEnum(Numberz::THREE);
+$ret = $testClient->testEnum(ThriftTest::Numberz::THREE);
 print(" = $ret\n");
 
 print("testEnum(FIVE)");
-$ret = $testClient->testEnum(Numberz::FIVE);
+$ret = $testClient->testEnum(ThriftTest::Numberz::FIVE);
 print(" = $ret\n");
 
 print("testEnum(EIGHT)");
-$ret = $testClient->testEnum(Numberz::EIGHT);
+$ret = $testClient->testEnum(ThriftTest::Numberz::EIGHT);
 print(" = $ret\n");
 
 #
@@ -222,7 +241,7 @@ print("}\n");
 # INSANITY TEST
 #
 my $insane = new ThriftTest::Insanity();
-$insane->{userMap}->{Numberz::FIVE} = 5000;
+$insane->{userMap}->{ThriftTest::Numberz::FIVE} = 5000;
 my $truck = new ThriftTest::Xtruct();
 $truck->string_thing("Truck");
 $truck->byte_thing(8);

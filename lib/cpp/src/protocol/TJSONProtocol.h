@@ -1,8 +1,21 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #ifndef _THRIFT_PROTOCOL_TJSONPROTOCOL_H_
 #define _THRIFT_PROTOCOL_TJSONPROTOCOL_H_ 1
@@ -11,7 +24,7 @@
 
 #include <stack>
 
-namespace facebook { namespace thrift { namespace protocol {
+namespace apache { namespace thrift { namespace protocol {
 
 // Forward declaration
 class TJSONContext;
@@ -78,7 +91,6 @@ class TJSONContext;
  * client, this would mean that infinities get converted to not-a-number in
  * transmission. I don't know of any work-around for this issue.
  *
- * @author Chad Walters <chad@powerset.com>
  */
 class TJSONProtocol : public TProtocol {
  public:
@@ -288,7 +300,7 @@ class TJSONProtocol : public TProtocol {
 /**
  * Constructs input and output protocol objects given transports.
  */
-class TJSONProtocolFactory {
+class TJSONProtocolFactory : public TProtocolFactory {
  public:
   TJSONProtocolFactory() {}
 
@@ -299,18 +311,18 @@ class TJSONProtocolFactory {
   }
 };
 
-}}} // facebook::thrift::protocol
+}}} // apache::thrift::protocol
 
 
 // TODO(dreiss): Move part of ThriftJSONString into a .cpp file and remove this.
 #include <transport/TBufferTransports.h>
 
-namespace facebook { namespace thrift {
+namespace apache { namespace thrift {
 
 template<typename ThriftStruct>
   std::string ThriftJSONString(const ThriftStruct& ts) {
-  using namespace facebook::thrift::transport;
-  using namespace facebook::thrift::protocol;
+  using namespace apache::thrift::transport;
+  using namespace apache::thrift::protocol;
   TMemoryBuffer* buffer = new TMemoryBuffer;
   boost::shared_ptr<TTransport> trans(buffer);
   TJSONProtocol protocol(trans);
@@ -323,6 +335,6 @@ template<typename ThriftStruct>
   return std::string((char*)buf, (unsigned int)size);
 }
 
-}} // facebook::thrift
+}} // apache::thrift
 
 #endif // #define _THRIFT_PROTOCOL_TJSONPROTOCOL_H_ 1

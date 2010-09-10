@@ -1,16 +1,30 @@
-%%%-------------------------------------------------------------------
-%%% File    : thrift_client.erl
-%%% Author  : Todd Lipcon <todd@lipcon.org>
-%%% Description : A client which connects to a thrift service
-%%%
-%%% Created : 24 Feb 2008 by Todd Lipcon <todd@lipcon.org>
-%%%-------------------------------------------------------------------
+%%
+%% Licensed to the Apache Software Foundation (ASF) under one
+%% or more contributor license agreements. See the NOTICE file
+%% distributed with this work for additional information
+%% regarding copyright ownership. The ASF licenses this file
+%% to you under the Apache License, Version 2.0 (the
+%% "License"); you may not use this file except in compliance
+%% with the License. You may obtain a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied. See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+
 -module(thrift_client).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, start_link/3, start_link/4, call/3, send_call/3, close/1]).
+-export([start_link/2, start_link/3, start_link/4,
+         start/3, start/4,
+         call/3, send_call/3, close/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -27,11 +41,16 @@
 %%====================================================================
 %%--------------------------------------------------------------------
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
+%% Description: Starts the server as a linked process.
 %%--------------------------------------------------------------------
 start_link(Host, Port, Service) when is_integer(Port), is_atom(Service) ->
     start_link(Host, Port, Service, []).
 
+start_link(Host, Port, Service, Options) ->
+    start(Host, Port, Service, [{monitor, link} | Options]).
+
+start_link(ProtocolFactory, Service) ->
+    start(ProtocolFactory, Service, [{monitor, link}]).
 
 %%
 %% Splits client options into protocol options and transport options
@@ -39,27 +58,36 @@ start_link(Host, Port, Service) when is_integer(Port), is_atom(Service) ->
 %% split_options([Options...]) -> {ProtocolOptions, TransportOptions}
 %%
 split_options(Options) ->
-    split_options(Options, [], []).
+    split_options(Options, [], [], []).
 
-split_options([], ProtoIn, TransIn) ->
-    {ProtoIn, TransIn};
+split_options([], ClientIn, ProtoIn, TransIn) ->
+    {ClientIn, ProtoIn, TransIn};
 
-split_options([Opt = {OptKey, _} | Rest], ProtoIn, TransIn)
+split_options([Opt = {OptKey, _} | Rest], ClientIn, ProtoIn, TransIn)
+  when OptKey =:= monitor ->
+    split_options(Rest, [Opt | ClientIn], ProtoIn, TransIn);
+
+split_options([Opt = {OptKey, _} | Rest], ClientIn, ProtoIn, TransIn)
   when OptKey =:= strict_read;
        OptKey =:= strict_write ->
-    split_options(Rest, [Opt | ProtoIn], TransIn);
+    split_options(Rest, ClientIn, [Opt | ProtoIn], TransIn);
 
-split_options([Opt = {OptKey, _} | Rest], ProtoIn, TransIn)
+split_options([Opt = {OptKey, _} | Rest], ClientIn, ProtoIn, TransIn)
   when OptKey =:= framed;
        OptKey =:= connect_timeout;
        OptKey =:= sockopts ->
-    split_options(Rest, ProtoIn, [Opt | TransIn]).
+    split_options(Rest, ClientIn, ProtoIn, [Opt | TransIn]).
 
+
+%%--------------------------------------------------------------------
+%% Function: start() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server as an unlinked process.
+%%--------------------------------------------------------------------
 
 %% Backwards-compatible starter for the common-case of socket transports
-start_link(Host, Port, Service, Options)
+start(Host, Port, Service, Options)
   when is_integer(Port), is_atom(Service), is_list(Options) ->
-    {ProtoOpts, TransOpts} = split_options(Options),
+    {ClientOpts, ProtoOpts, TransOpts} = split_options(Options),
 
     {ok, TransportFactory} =
         thrift_socket_transport:new_transport_factory(Host, Port, TransOpts),
@@ -67,22 +95,49 @@ start_link(Host, Port, Service, Options)
     {ok, ProtocolFactory} = thrift_binary_protocol:new_protocol_factory(
                               TransportFactory, ProtoOpts),
 
-    start_link(ProtocolFactory, Service).
+    start(ProtocolFactory, Service, ClientOpts).
 
 
 %% ProtocolFactory :: fun() -> thrift_protocol()
-start_link(ProtocolFactory, Service)
+start(ProtocolFactory, Service, ClientOpts)
   when is_function(ProtocolFactory), is_atom(Service) ->
-    case gen_server:start_link(?MODULE, [Service], []) of
-        {ok, Pid} ->
-            case gen_server:call(Pid, {connect, ProtocolFactory}) of
-                ok ->
-                    {ok, Pid};
-                Error ->
-                    Error
+    {Starter, Opts} =
+        case lists:keysearch(monitor, 1, ClientOpts) of
+            {value, {monitor, link}} ->
+                {start_link, []};
+            {value, {monitor, tether}} ->
+                {start, [{tether, self()}]};
+            _ ->
+                {start, []}
+        end,
+
+    Connect =
+        case lists:keysearch(connect, 1, ClientOpts) of
+            {value, {connect, Choice}} ->
+                Choice;
+            _ ->
+                %% By default, connect at creation-time.
+                true
+        end,
+
+
+    Started = gen_server:Starter(?MODULE, [Service, Opts], []),
+
+    if
+        Connect ->
+            case Started of
+                {ok, Pid} ->
+                    case gen_server:call(Pid, {connect, ProtocolFactory}) of
+                        ok ->
+                            {ok, Pid};
+                        Error ->
+                            Error
+                    end;
+                Else ->
+                    Else
             end;
-        Else ->
-            Else
+        true ->
+            Started
     end.
 
 call(Client, Function, Args)
@@ -98,7 +153,7 @@ cast(Client, Function, Args)
     gen_server:cast(Client, {call, Function, Args}).
 
 %% Sends a function call but does not read the result. This is useful
-%% if you're trying to log non-async function calls to write-only
+%% if you're trying to log non-oneway function calls to write-only
 %% transports like thrift_disk_log_transport.
 send_call(Client, Function, Args)
   when is_pid(Client), is_atom(Function), is_list(Args) ->
@@ -118,7 +173,13 @@ close(Client) when is_pid(Client) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([Service]) ->
+init([Service, Opts]) ->
+    case lists:keysearch(tether, 1, Opts) of
+        {value, {tether, Pid}} ->
+            erlang:monitor(process, Pid);
+        _Else ->
+            ok
+    end,
     {ok, #state{service = Service}}.
 
 %%--------------------------------------------------------------------
@@ -209,6 +270,11 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'DOWN', MonitorRef, process, Pid, _Info}, State)
+  when is_reference(MonitorRef), is_pid(Pid) ->
+    %% We don't actually verify the correctness of the DOWN message.
+    {stop, parent_died, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -265,7 +331,7 @@ receive_function_result(State = #state{protocol = Proto,
 
 read_result(_State,
             _Function,
-            async_void) ->
+            oneway_void) ->
     {ok, ok};
 
 read_result(State = #state{protocol = Proto,

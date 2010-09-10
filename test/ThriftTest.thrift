@@ -1,9 +1,35 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ * Contains some contributions under the Thrift Software License.
+ * Please see doc/old-thrift-license.txt in the Thrift distribution for
+ * details.
+ */
+
 namespace java thrift.test
 namespace cpp thrift.test
 namespace rb Thrift.Test
 namespace perl ThriftTest
 namespace csharp Thrift.Test
 
+/**
+ * Docstring!
+ */
 enum Numberz
 {
   ONE = 1,
@@ -22,6 +48,11 @@ struct Bonk
   2: i32 type
 }
 
+struct Bools {
+  1: bool im_true,
+  2: bool im_false,
+}
+
 struct Xtruct
 {
   1:  string string_thing,
@@ -37,10 +68,25 @@ struct Xtruct2
   3: i32    i32_thing
 }
 
+struct Xtruct3
+{
+  1:  string string_thing,
+  4:  i32    changed,
+  9:  i32    i32_thing,
+  11: i64    i64_thing
+}
+
+
 struct Insanity
 {
   1: map<Numberz, UserId> userMap,
   2: list<Xtruct> xtructs
+}
+
+struct CrazyNesting {
+  1: string string_field,
+  2: optional set<Insanity> set_field,
+  3: required list< map<set<i32>,map<i32,set<list<map<Insanity,string>>>>>> list_field
 }
 
 exception Xception {
@@ -81,18 +127,18 @@ service ThriftTest
   map<UserId, map<Numberz,Insanity>> testInsanity(1: Insanity argument),
 
   /* Multiple parameters */
-  Xtruct testMulti(byte arg0, i32 arg1, i64 arg2, map<i16, string> arg3, Numberz arg4, UserId arg5),
+  Xtruct testMulti(1: byte arg0, 2: i32 arg1, 3: i64 arg2, 4: map<i16, string> arg3, 5: Numberz arg4, 6: UserId arg5),
 
   /* Exception specifier */
 
-  void testException(string arg) throws(Xception err1),
+  void testException(1: string arg) throws(1: Xception err1),
 
   /* Multiple exceptions specifier */
 
-  Xtruct testMultiException(string arg0, string arg1) throws(Xception err1, Xception2 err2)
+  Xtruct testMultiException(1: string arg0, 2: string arg1) throws(1: Xception err1, 2: Xception2 err2)
 
-  /* Test async void */
-  async void testAsync(1:i32 secondsToSleep)
+  /* Test oneway void */
+  oneway void testOneway(1:i32 secondsToSleep)
 }
 
 service SecondService
@@ -102,6 +148,7 @@ service SecondService
 
 struct VersioningTestV1 {
        1: i32 begin_in_both,
+       3: string old_string,
        12: i32 end_in_both
 }
 

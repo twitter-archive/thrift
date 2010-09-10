@@ -1,13 +1,20 @@
 #
-# Copyright (c) 2006- Facebook
-# Distributed under the Thrift Software License
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
 #
-# See accompanying file LICENSE or visit the Thrift site at:
-# http://developers.facebook.com/thrift/
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
-#  package - thrift.socket
-#  author  - T Jake Luciani <jakers@gmail.com>
-#  author  - Mark Slee      <mcslee@facebook.com>
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
 #
 
 require 5.6.0;
@@ -26,9 +33,9 @@ use base('Thrift::Transport');
 
 sub new
 {
-    my $classname = shift;
-    my $host      = shift || "localhost";
-    my $port      = shift || 9090;
+    my $classname    = shift;
+    my $host         = shift || "localhost";
+    my $port         = shift || 9090;
     my $debugHandler = shift;
 
     my $self = {
@@ -36,8 +43,8 @@ sub new
         port         => $port,
         debugHandler => $debugHandler,
         debug        => 0,
-        sendTimeout  => 100,
-        recvTimeout  => 750,
+        sendTimeout  => 10000,
+        recvTimeout  => 10000,
         handle       => undef,
     };
 
@@ -84,7 +91,11 @@ sub isOpen
 {
     my $self = shift;
 
-    return $self->{handle}->handles->[0]->connected;
+    if( defined $self->{handle} ){
+        return ($self->{handle}->handles())[0]->connected;
+    }
+
+    return 0;
 }
 
 #
@@ -120,7 +131,9 @@ sub close
 {
     my $self = shift;
 
-    close( ($self->{handle}->handles())[0] );
+    if( defined $self->{handle} ){
+        CORE::close( ($self->{handle}->handles())[0] );
+    }
 }
 
 #
@@ -134,6 +147,8 @@ sub readAll
     my $self = shift;
     my $len  = shift;
 
+
+    return unless defined $self->{handle};
 
     my $pre = "";
     while (1) {
@@ -178,8 +193,10 @@ sub read
     my $self = shift;
     my $len  = shift;
 
+    return unless defined $self->{handle};
+
     #check for timeout
-    my @sockets = $self->{handle}->can_read( $self->{sendTimeout} / 1000 );
+    my @sockets = $self->{handle}->can_read( $self->{recvTimeout} / 1000 );
 
     if(@sockets == 0){
         die new Thrift::TException('TSocket: timed out reading '.$len.' bytes from '.
@@ -213,11 +230,13 @@ sub write
     my $buf  = shift;
 
 
+    return unless defined $self->{handle};
+
     while (length($buf) > 0) {
 
 
         #check for timeout
-        my @sockets = $self->{handle}->can_write( $self->{recvTimeout} / 1000 );
+        my @sockets = $self->{handle}->can_write( $self->{sendTimeout} / 1000 );
 
         if(@sockets == 0){
             die new Thrift::TException('TSocket: timed out writing to bytes from '.
@@ -229,7 +248,7 @@ sub write
         my $got = $sock->send($buf);
 
         if (!defined $got || $got == 0 ) {
-            die new Thrift::TException('TSocket: Could not write '.strlen($buf).' bytes '.
+            die new Thrift::TException('TSocket: Could not write '.length($buf).' bytes '.
                                  $self->{host}.':'.$self->{host});
         }
 
@@ -243,7 +262,69 @@ sub write
 sub flush
 {
     my $self = shift;
+
+    return unless defined $self->{handle};
+
     my $ret  = ($self->{handle}->handles())[0]->flush;
 }
+
+
+#
+# Build a ServerSocket from the ServerTransport base class
+#
+package  Thrift::ServerSocket;
+
+use base qw( Thrift::Socket Thrift::ServerTransport );
+
+use constant LISTEN_QUEUE_SIZE => 128;
+
+sub new
+{
+    my $classname   = shift;
+    my $port        = shift;
+
+    my $self        = $classname->SUPER::new(undef, $port, undef);
+    return bless($self,$classname);
+}
+
+sub listen
+{
+    my $self = shift;
+
+    # Listen to a new socket
+    my $sock = IO::Socket::INET->new(LocalAddr => undef, # any addr
+                                     LocalPort => $self->{port},
+                                     Proto     => 'tcp',
+                                     Listen    => LISTEN_QUEUE_SIZE,
+                                     ReuseAddr => 1)
+        || do {
+            my $error = 'TServerSocket: Could not bind to ' .
+                        $self->{host} . ':' . $self->{port} . ' (' . $! . ')';
+
+            if ($self->{debug}) {
+                $self->{debugHandler}->($error);
+            }
+
+            die new Thrift::TException($error);
+        };
+
+    $self->{handle} = $sock;
+}
+
+sub accept
+{
+    my $self = shift;
+
+    if ( exists $self->{handle} and defined $self->{handle} )
+    {
+        my $client        = $self->{handle}->accept();
+        my $result        = new Thrift::Socket;
+        $result->{handle} = new IO::Select($client);
+        return $result;
+    }
+
+    return 0;
+}
+
 
 1;

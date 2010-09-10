@@ -1,8 +1,21 @@
-# Copyright (c) 2006- Facebook
-# Distributed under the Thrift Software License
 #
-# See accompanying file LICENSE or visit the Thrift site at:
-# http://developers.facebook.com/thrift/
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
 
 from TTransport import *
 import os
@@ -73,28 +86,30 @@ class TSocket(TSocketBase):
         message = 'Could not connect to socket %s' % self._unix_socket
       else:
         message = 'Could not connect to %s:%d' % (self.host, self.port)
-      raise TTransportException(TTransportException.NOT_OPEN, message)
+      raise TTransportException(type=TTransportException.NOT_OPEN, message=message)
 
   def read(self, sz):
     buff = self.handle.recv(sz)
     if len(buff) == 0:
-      raise TTransportException('TSocket read 0 bytes')
+      raise TTransportException(type=TTransportException.END_OF_FILE, message='TSocket read 0 bytes')
     return buff
 
   def write(self, buff):
+    if not self.handle:
+      raise TTransportException(type=TTransportException.NOT_OPEN, message='Transport not open')
     sent = 0
     have = len(buff)
     while sent < have:
       plus = self.handle.send(buff)
       if plus == 0:
-        raise TTransportException('TSocket sent 0 bytes')
+        raise TTransportException(type=TTransportException.END_OF_FILE, message='TSocket sent 0 bytes')
       sent += plus
       buff = buff[plus:]
 
   def flush(self):
     pass
 
-class TServerSocket(TServerTransportBase, TSocketBase):
+class TServerSocket(TSocketBase, TServerTransportBase):
   """Socket implementation of TServerTransport base."""
 
   def __init__(self, port=9090, unix_socket=None):

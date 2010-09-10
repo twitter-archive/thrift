@@ -1,8 +1,21 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include "PosixThreadFactory.h"
 #include "Exception.h"
@@ -18,7 +31,7 @@
 
 #include <boost/weak_ptr.hpp>
 
-namespace facebook { namespace thrift { namespace concurrency {
+namespace apache { namespace thrift { namespace concurrency {
 
 using boost::shared_ptr;
 using boost::weak_ptr;
@@ -26,7 +39,6 @@ using boost::weak_ptr;
 /**
  * The POSIX thread class.
  *
- * @author marc
  * @version $Id:$
  */
 class PthreadThread: public Thread {
@@ -215,8 +227,14 @@ class PosixThreadFactory::Impl {
    */
   static int toPthreadPriority(POLICY policy, PRIORITY priority) {
     int pthread_policy = toPthreadPolicy(policy);
-    int min_priority = sched_get_priority_min(pthread_policy);
-    int max_priority = sched_get_priority_max(pthread_policy);
+    int min_priority = 0;
+    int max_priority = 0;
+#ifdef HAVE_SCHED_GET_PRIORITY_MIN
+    min_priority = sched_get_priority_min(pthread_policy);
+#endif
+#ifdef HAVE_SCHED_GET_PRIORITY_MAX
+    max_priority = sched_get_priority_max(pthread_policy);
+#endif
     int quanta = (HIGHEST - LOWEST) + 1;
     float stepsperquanta = (max_priority - min_priority) / quanta;
 
@@ -268,7 +286,6 @@ class PosixThreadFactory::Impl {
   void setDetached(bool value) { detached_ = value; }
 
   Thread::id_t getCurrentThreadId() const {
-    // TODO(dreiss): Stop using C-style casts.
     return (Thread::id_t)pthread_self();
   }
 
@@ -293,4 +310,4 @@ void PosixThreadFactory::setDetached(bool value) { impl_->setDetached(value); }
 
 Thread::id_t PosixThreadFactory::getCurrentThreadId() const { return impl_->getCurrentThreadId(); }
 
-}}} // facebook::thrift::concurrency
+}}} // apache::thrift::concurrency

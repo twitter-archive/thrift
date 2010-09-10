@@ -1,3 +1,22 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include <boost/test/unit_test.hpp>
 #include <iostream>
 #include <climits>
@@ -9,8 +28,8 @@
 BOOST_AUTO_TEST_SUITE( TMemoryBufferTest )
 
 BOOST_AUTO_TEST_CASE( test_roundtrip ) {
-    using facebook::thrift::transport::TMemoryBuffer;
-    using facebook::thrift::protocol::TBinaryProtocol;
+    using apache::thrift::transport::TMemoryBuffer;
+    using apache::thrift::protocol::TBinaryProtocol;
     using boost::shared_ptr;
 
     shared_ptr<TMemoryBuffer> strBuffer(new TMemoryBuffer());
@@ -36,7 +55,7 @@ BOOST_AUTO_TEST_CASE( test_roundtrip ) {
 
 BOOST_AUTO_TEST_CASE( test_copy )
   {
-    using facebook::thrift::transport::TMemoryBuffer;
+    using apache::thrift::transport::TMemoryBuffer;
     using std::string;
     using std::cout;
     using std::endl;
@@ -62,8 +81,8 @@ BOOST_AUTO_TEST_CASE( test_copy )
 
 BOOST_AUTO_TEST_CASE( test_exceptions )
   {
-    using facebook::thrift::transport::TTransportException;
-    using facebook::thrift::transport::TMemoryBuffer;
+    using apache::thrift::transport::TTransportException;
+    using apache::thrift::transport::TMemoryBuffer;
     using std::string;
 
     char data[] = "foo\0bar";

@@ -1,16 +1,31 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include <sstream>
 #include <string>
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <cctype>
 
 #include <sys/stat.h>
+#include <stdexcept>
 
 #include "platform.h"
 #include "t_oop_generator.h"
@@ -20,7 +35,6 @@ using namespace std;
 /**
  * Java code generator.
  *
- * @author Mark Slee <mcslee@facebook.com>
  */
 class t_java_generator : public t_oop_generator {
  public:
@@ -60,6 +74,7 @@ class t_java_generator : public t_oop_generator {
   void generate_typedef (t_typedef*  ttypedef);
   void generate_enum    (t_enum*     tenum);
   void generate_struct  (t_struct*   tstruct);
+  void generate_union   (t_struct*   tunion);
   void generate_xception(t_struct*   txception);
   void generate_service (t_service*  tservice);
 
@@ -74,22 +89,47 @@ class t_java_generator : public t_oop_generator {
 
   void generate_java_struct_definition(std::ofstream& out, t_struct* tstruct, bool is_xception=false, bool in_class=false, bool is_result=false);
   void generate_java_struct_equality(std::ofstream& out, t_struct* tstruct);
+  void generate_java_struct_compare_to(std::ofstream& out, t_struct* tstruct);
   void generate_java_struct_reader(std::ofstream& out, t_struct* tstruct);
+  void generate_java_validator(std::ofstream& out, t_struct* tstruct);
   void generate_java_struct_result_writer(std::ofstream& out, t_struct* tstruct);
   void generate_java_struct_writer(std::ofstream& out, t_struct* tstruct);
   void generate_java_struct_tostring(std::ofstream& out, t_struct* tstruct);
+  void generate_java_meta_data_map(std::ofstream& out, t_struct* tstruct);
+  void generate_field_value_meta_data(std::ofstream& out, t_type* type);
+  std::string get_java_type_string(t_type* type);
   void generate_reflection_setters(std::ostringstream& out, t_type* type, std::string field_name, std::string cap_name);
   void generate_reflection_getters(std::ostringstream& out, t_type* type, std::string field_name, std::string cap_name);
   void generate_generic_field_getters_setters(std::ofstream& out, t_struct* tstruct);
+  void generate_generic_isset_method(std::ofstream& out, t_struct* tstruct);
   void generate_java_bean_boilerplate(std::ofstream& out, t_struct* tstruct);
 
   void generate_function_helpers(t_function* tfunction);
+  std::string get_cap_name(std::string name);
+  std::string generate_isset_check(t_field* field);
+  std::string generate_isset_check(std::string field);
+  void generate_isset_set(ofstream& out, t_field* field);
+  std::string isset_field_id(t_field* field);
 
   void generate_service_interface (t_service* tservice);
   void generate_service_helpers   (t_service* tservice);
   void generate_service_client    (t_service* tservice);
   void generate_service_server    (t_service* tservice);
   void generate_process_function  (t_service* tservice, t_function* tfunction);
+
+  void generate_java_union(t_struct* tstruct);
+  void generate_union_constructor(ofstream& out, t_struct* tstruct);
+  void generate_union_getters_and_setters(ofstream& out, t_struct* tstruct);
+  void generate_union_abstract_methods(ofstream& out, t_struct* tstruct);
+  void generate_check_type(ofstream& out, t_struct* tstruct);
+  void generate_read_value(ofstream& out, t_struct* tstruct);
+  void generate_write_value(ofstream& out, t_struct* tstruct);
+  void generate_get_field_desc(ofstream& out, t_struct* tstruct);
+  void generate_get_struct_desc(ofstream& out, t_struct* tstruct);
+  void generate_get_field_name(ofstream& out, t_struct* tstruct);
+
+  void generate_union_comparisons(ofstream& out, t_struct* tstruct);
+  void generate_union_hashcode(ofstream& out, t_struct* tstruct);
 
   /**
    * Serialization constructs
@@ -145,10 +185,24 @@ class t_java_generator : public t_oop_generator {
                                           std::string iter);
 
   void generate_java_doc                 (std::ofstream& out,
-                                          t_doc*     tdoc);
+                                          t_field*    field);
+
+  void generate_java_doc                 (std::ofstream& out,
+                                          t_doc*      tdoc);
+
+  void generate_java_doc                 (std::ofstream& out,
+                                          t_function* tdoc);
+
+  void generate_java_docstring_comment   (std::ofstream &out,
+                                          string contents);
 
   void generate_deep_copy_container(std::ofstream& out, std::string source_name_p1, std::string source_name_p2, std::string result_name, t_type* type);
-  void generate_deep_copy_non_container(std::ofstream& out, std::string source_name, t_type* type);
+  void generate_deep_copy_non_container(std::ofstream& out, std::string source_name, std::string dest_name, t_type* type);
+
+  bool is_comparable(t_struct* tstruct);
+  bool is_comparable(t_type* type);
+
+  bool has_bit_vector(t_struct* tstruct);
 
   /**
    * Helper rendering functions
@@ -157,13 +211,17 @@ class t_java_generator : public t_oop_generator {
   std::string java_package();
   std::string java_type_imports();
   std::string java_thrift_imports();
-  std::string type_name(t_type* ttype, bool in_container=false, bool in_init=false);
+  std::string type_name(t_type* ttype, bool in_container=false, bool in_init=false, bool skip_generic=false);
   std::string base_type_name(t_base_type* tbase, bool in_container=false);
   std::string declare_field(t_field* tfield, bool init=false);
   std::string function_signature(t_function* tfunction, std::string prefix="");
   std::string argument_list(t_struct* tstruct);
   std::string type_to_enum(t_type* ttype);
-
+  std::string get_enum_class_name(t_type* type);
+  void generate_struct_desc(ofstream& out, t_struct* tstruct);
+  void generate_field_descs(ofstream& out, t_struct* tstruct);
+  void generate_field_name_constants(ofstream& out, t_struct* tstruct);
+  
   bool type_can_be_null(t_type* ttype) {
     ttype = get_true_type(ttype);
 
@@ -171,9 +229,11 @@ class t_java_generator : public t_oop_generator {
       ttype->is_container() ||
       ttype->is_struct() ||
       ttype->is_xception() ||
-      ttype->is_string();
+      ttype->is_string() ||
+      ttype->is_enum();
   }
 
+  std::string constant_name(std::string name);
 
  private:
 
@@ -222,7 +282,7 @@ void t_java_generator::init_generator() {
 /**
  * Packages the generated file
  *
- * @return String of the package, i.e. "package com.facebook.thriftdemo;"
+ * @return String of the package, i.e. "package org.apache.thriftdemo;"
  */
 string t_java_generator::java_package() {
   if (!package_name_.empty()) {
@@ -244,14 +304,20 @@ string t_java_generator::java_type_imports() {
 
   return
     string() +
+    hash_builder +
     "import java.util.List;\n" +
     "import java.util.ArrayList;\n" +
     "import java.util.Map;\n" +
     "import java.util.HashMap;\n" +
+    "import java.util.EnumMap;\n" +
     "import java.util.Set;\n" +
     "import java.util.HashSet;\n" +
-    hash_builder +
-    "import com.facebook.thrift.*;\n\n";
+    "import java.util.EnumSet;\n" +
+    "import java.util.Collections;\n" +
+    "import java.util.BitSet;\n" +
+    "import java.util.Arrays;\n" +
+    "import org.slf4j.Logger;\n" +
+    "import org.slf4j.LoggerFactory;\n\n";
 }
 
 /**
@@ -262,8 +328,9 @@ string t_java_generator::java_type_imports() {
 string t_java_generator::java_thrift_imports() {
   return
     string() +
-    "import com.facebook.thrift.protocol.*;\n" +
-    "import com.facebook.thrift.transport.*;\n\n";
+    "import org.apache.thrift.*;\n" +
+    "import org.apache.thrift.meta_data.*;\n" +
+    "import org.apache.thrift.protocol.*;\n\n";
 }
 
 /**
@@ -296,12 +363,20 @@ void t_java_generator::generate_enum(t_enum* tenum) {
     autogen_comment() <<
     java_package() << endl;
 
-  f_enum <<
-    "public class " << tenum->get_name() << " ";
+  // Add java imports
+  f_enum << string() +
+    "import java.util.Map;\n" + 
+    "import java.util.HashMap;\n" +
+    "import org.apache.thrift.TEnum;" << endl;
+
+  generate_java_doc(f_enum, tenum);
+  indent(f_enum) <<
+    "public enum " << tenum->get_name() << " implements TEnum";
   scope_up(f_enum);
 
   vector<t_enum_value*> constants = tenum->get_constants();
   vector<t_enum_value*>::iterator c_iter;
+  bool first = true;
   int value = -1;
   for (c_iter = constants.begin(); c_iter != constants.end(); ++c_iter) {
     if ((*c_iter)->has_value()) {
@@ -310,12 +385,50 @@ void t_java_generator::generate_enum(t_enum* tenum) {
       ++value;
     }
 
-    indent(f_enum) <<
-      "public static final int " << (*c_iter)->get_name() <<
-      " = " << value << ";" << endl;
+    if (first) {
+      first = false;
+    } else {
+      f_enum << "," << endl;
+    }
+
+    generate_java_doc(f_enum, *c_iter);
+    indent(f_enum) << "  " << (*c_iter)->get_name() << "(" << value << ")";
   }
+  f_enum << ";" << endl << endl;
+
+  indent(f_enum) << "private static final Map<Integer, "+ tenum->get_name() +
+    "> BY_VALUE = new HashMap<Integer,"+ tenum->get_name() +">() {{" << endl;
+  indent(f_enum) << "  for("+ tenum->get_name() +" val : "+ tenum->get_name() +".values()) {" << endl;
+  indent(f_enum) << "    put(val.getValue(), val);" << endl;
+  indent(f_enum) << "  }" << endl;
+  indent(f_enum) << "}};" << endl;
+
+  f_enum << endl;
+
+  // Field for thriftCode
+  indent(f_enum) << "private final int value;" << endl << endl;
+
+  indent(f_enum) << "private " << tenum->get_name() << "(int value) {" << endl;
+  indent(f_enum) << "  this.value = value;" <<endl;
+  indent(f_enum) << "}" << endl << endl;
+ 
+  indent(f_enum) << "/**" << endl;
+  indent(f_enum) << " * Get the integer value of this enum value, as defined in the Thrift IDL." << endl;
+  indent(f_enum) << " */" << endl;
+  indent(f_enum) << "public int getValue() {" << endl;
+  indent(f_enum) << "  return value;" <<endl;
+  indent(f_enum) << "}" << endl << endl;
+
+  indent(f_enum) << "/**" << endl;
+  indent(f_enum) << " * Find a the enum type by its integer value, as defined in the Thrift IDL." << endl;
+  indent(f_enum) << " * @return null if the value is not found." << endl;
+  indent(f_enum) << " */" << endl;
+  indent(f_enum) << "public static "+ tenum->get_name() + " findByValue(int value) { " << endl;
+  indent(f_enum) << "  return BY_VALUE.get(value);" << endl;
+  indent(f_enum) << "}" << endl;
 
   scope_down(f_enum);
+
   f_enum.close();
 }
 
@@ -397,19 +510,8 @@ void t_java_generator::print_const_value(std::ofstream& out, string name, t_type
       }
       string val = render_const_value(out, name, field_type, v_iter->second);
       indent(out) << name << ".";
-      if (bean_style_) {
-        std::string cap_name = v_iter->first->get_string();
-        if (nocamel_style_) {
-          cap_name = "_" + cap_name;
-        } else {
-          cap_name[0] = toupper(cap_name[0]);
-        }
-        out << "set" << cap_name << "(" << val << ")";
-      } else {
-        out << v_iter->first->get_string() << " = " << val;
-      }
-      out << ";" << endl;
-      indent(out) << name << ".__isset." << v_iter->first->get_string() << " = true;" << endl;
+      std::string cap_name = get_cap_name(v_iter->first->get_string());
+      out << "set" << cap_name << "(" << val << ");" << endl;
     }
     if (!in_static) {
       indent_down();
@@ -472,20 +574,26 @@ string t_java_generator::render_const_value(ofstream& out, string name, t_type* 
     t_base_type::t_base tbase = ((t_base_type*)type)->get_base();
     switch (tbase) {
     case t_base_type::TYPE_STRING:
-      render << "\"" + value->get_string() + "\"";
+      render << '"' << get_escaped_string(value) << '"';
       break;
     case t_base_type::TYPE_BOOL:
       render << ((value->get_integer() > 0) ? "true" : "false");
       break;
     case t_base_type::TYPE_BYTE:
+      render << "(byte)" << value->get_integer();
+      break;
     case t_base_type::TYPE_I16:
+      render << "(short)" << value->get_integer();
+      break;
     case t_base_type::TYPE_I32:
-    case t_base_type::TYPE_I64:
       render << value->get_integer();
+      break;
+    case t_base_type::TYPE_I64:
+      render << value->get_integer() << "L";
       break;
     case t_base_type::TYPE_DOUBLE:
       if (value->get_type() == t_const_value::CV_INTEGER) {
-        render << value->get_integer();
+        render << "(double)" << value->get_integer();
       } else {
         render << value->get_double();
       }
@@ -505,13 +613,17 @@ string t_java_generator::render_const_value(ofstream& out, string name, t_type* 
 }
 
 /**
- * Generates a struct definition for a thrift data type. This is a class
- * with data members, read(), write(), and an inner Isset class.
+ * Generates a struct definition for a thrift data type. This will be a TBase 
+ * implementor.
  *
  * @param tstruct The struct definition
  */
 void t_java_generator::generate_struct(t_struct* tstruct) {
-  generate_java_struct(tstruct, false);
+  if (tstruct->is_union()) {
+    generate_java_union(tstruct);
+  } else {
+    generate_java_struct(tstruct, false);
+  }
 }
 
 /**
@@ -549,6 +661,355 @@ void t_java_generator::generate_java_struct(t_struct* tstruct,
 }
 
 /**
+ * Java union definition.
+ *
+ * @param tstruct The struct definition
+ */
+void t_java_generator::generate_java_union(t_struct* tstruct) {
+  // Make output file
+  string f_struct_name = package_dir_+"/"+(tstruct->get_name())+".java";
+  ofstream f_struct;
+  f_struct.open(f_struct_name.c_str());
+
+  f_struct <<
+    autogen_comment() <<
+    java_package() <<
+    java_type_imports() <<
+    java_thrift_imports();
+
+  generate_java_doc(f_struct, tstruct);
+
+  bool is_final = (tstruct->annotations_.find("final") != tstruct->annotations_.end());
+
+  indent(f_struct) <<
+    "public " << (is_final ? "final " : "") << "class " << tstruct->get_name() 
+    << " extends TUnion<" << tstruct->get_name() << "._Fields> ";
+
+  if (is_comparable(tstruct)) {
+    f_struct << "implements Comparable<" << type_name(tstruct) << "> ";
+  }
+
+  scope_up(f_struct);
+
+  generate_struct_desc(f_struct, tstruct);
+  generate_field_descs(f_struct, tstruct);
+
+  f_struct << endl;
+
+  generate_field_name_constants(f_struct, tstruct);
+
+  f_struct << endl;
+
+  generate_java_meta_data_map(f_struct, tstruct);
+
+  generate_union_constructor(f_struct, tstruct);
+
+  f_struct << endl;
+
+  generate_union_abstract_methods(f_struct, tstruct);
+
+  f_struct << endl;
+
+  generate_union_getters_and_setters(f_struct, tstruct);
+  
+  f_struct << endl;
+
+  generate_union_comparisons(f_struct, tstruct);
+
+  f_struct << endl;
+  
+  generate_union_hashcode(f_struct, tstruct);
+
+  f_struct << endl;
+
+  scope_down(f_struct);
+
+  f_struct.close();
+}
+
+void t_java_generator::generate_union_constructor(ofstream& out, t_struct* tstruct) {
+  indent(out) << "public " << type_name(tstruct) << "() {" << endl;
+  indent(out) << "  super();" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "public " << type_name(tstruct) << "(_Fields setField, Object value) {" << endl;
+  indent(out) << "  super(setField, value);" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "public " << type_name(tstruct) << "(" << type_name(tstruct) << " other) {" << endl;
+  indent(out) << "  super(other);" << endl;
+  indent(out) << "}" << endl;
+
+  indent(out) << "public " << tstruct->get_name() << " deepCopy() {" << endl;
+  indent(out) << "  return new " << tstruct->get_name() << "(this);" << endl;
+  indent(out) << "}" << endl << endl;
+
+  // generate "constructors" for each field
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    indent(out) << "public static " << type_name(tstruct) << " " << (*m_iter)->get_name() << "(" << type_name((*m_iter)->get_type()) << " value) {" << endl;
+    indent(out) << "  " << type_name(tstruct) << " x = new " << type_name(tstruct) << "();" << endl;
+    indent(out) << "  x.set" << get_cap_name((*m_iter)->get_name()) << "(value);" << endl;
+    indent(out) << "  return x;" << endl;
+    indent(out) << "}" << endl << endl; 
+  }
+}
+
+void t_java_generator::generate_union_getters_and_setters(ofstream& out, t_struct* tstruct) {
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+  
+  bool first = true;
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    if (first) {
+      first = false;
+    } else {
+      out << endl;
+    }
+
+    t_field* field = (*m_iter);
+
+    generate_java_doc(out, field);
+    indent(out) << "public " << type_name(field->get_type()) << " get" << get_cap_name(field->get_name()) << "() {" << endl;
+    indent(out) << "  if (getSetField() == _Fields." << constant_name(field->get_name()) << ") {" << endl;
+    indent(out) << "    return (" << type_name(field->get_type(), true) << ")getFieldValue();" << endl;
+    indent(out) << "  } else {" << endl;
+    indent(out) << "    throw new RuntimeException(\"Cannot get field '" << field->get_name() 
+      << "' because union is currently set to \" + getFieldDesc(getSetField()).name);" << endl;
+    indent(out) << "  }" << endl;
+    indent(out) << "}" << endl;
+    
+    out << endl;
+
+    generate_java_doc(out, field);
+    indent(out) << "public void set" << get_cap_name(field->get_name()) << "(" << type_name(field->get_type()) << " value) {" << endl;
+    if (type_can_be_null(field->get_type())) {
+      indent(out) << "  if (value == null) throw new NullPointerException();" << endl;
+    }
+    indent(out) << "  setField_ = _Fields." << constant_name(field->get_name()) << ";" << endl;
+    indent(out) << "  value_ = value;" << endl;
+    indent(out) << "}" << endl;
+  }
+}
+
+void t_java_generator::generate_union_abstract_methods(ofstream& out, t_struct* tstruct) {
+  generate_check_type(out, tstruct);
+  out << endl;
+  generate_read_value(out, tstruct);
+  out << endl;
+  generate_write_value(out, tstruct);
+  out << endl;
+  generate_get_field_desc(out, tstruct);
+  out << endl;
+  generate_get_struct_desc(out, tstruct);
+  out << endl;
+  indent(out) << "@Override" << endl;
+  indent(out) << "protected _Fields enumForId(short id) {" << endl;
+  indent(out) << "  return _Fields.findByThriftIdOrThrow(id);" << endl;
+  indent(out) << "}" << endl;
+}
+
+void t_java_generator::generate_check_type(ofstream& out, t_struct* tstruct) {
+  indent(out) << "@Override" << endl;
+  indent(out) << "protected void checkType(_Fields setField, Object value) throws ClassCastException {" << endl;
+  indent_up();
+
+  indent(out) << "switch (setField) {" << endl;
+  indent_up();
+
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    t_field* field = (*m_iter);
+    
+    indent(out) << "case " << constant_name(field->get_name()) << ":" << endl;
+    indent(out) << "  if (value instanceof " << type_name(field->get_type(), true, false, true) << ") {" << endl;
+    indent(out) << "    break;" << endl;
+    indent(out) << "  }" << endl;
+    indent(out) << "  throw new ClassCastException(\"Was expecting value of type " 
+      << type_name(field->get_type(), true, false) << " for field '" << field->get_name() 
+      << "', but got \" + value.getClass().getSimpleName());" << endl;
+    // do the real check here
+  }
+  
+  indent(out) << "default:" << endl;
+  indent(out) << "  throw new IllegalArgumentException(\"Unknown field id \" + setField);" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl;
+  
+  indent_down();
+  indent(out) << "}" << endl;
+}
+
+void t_java_generator::generate_read_value(ofstream& out, t_struct* tstruct) {
+  indent(out) << "@Override" << endl;
+  indent(out) << "protected Object readValue(TProtocol iprot, TField field) throws TException {" << endl;
+
+  indent_up();
+
+  indent(out) << "switch (_Fields.findByThriftId(field.id)) {" << endl;
+  indent_up();
+
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    t_field* field = (*m_iter);
+    
+    indent(out) << "case " << constant_name(field->get_name()) << ":" << endl;
+    indent_up();
+    indent(out) << "if (field.type == " << constant_name(field->get_name()) << "_FIELD_DESC.type) {" << endl;
+    indent_up();
+    indent(out) << type_name(field->get_type(), true, false) << " " << field->get_name() << ";" << endl;
+    generate_deserialize_field(out, field, "");
+    indent(out) << "return " << field->get_name() << ";" << endl;
+    indent_down();
+    indent(out) << "} else {" << endl;
+    indent(out) << "  TProtocolUtil.skip(iprot, field.type);" << endl;
+    indent(out) << "  return null;" << endl;
+    indent(out) << "}" << endl;
+    indent_down();
+  }
+  
+  indent(out) << "default:" << endl;
+  indent(out) << "  TProtocolUtil.skip(iprot, field.type);" << endl;
+  indent(out) << "  return null;" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl;
+}
+
+void t_java_generator::generate_write_value(ofstream& out, t_struct* tstruct) {
+  indent(out) << "@Override" << endl;
+  indent(out) << "protected void writeValue(TProtocol oprot, _Fields setField, Object value) throws TException {" << endl;
+
+  indent_up();
+
+  indent(out) << "switch (setField) {" << endl;
+  indent_up();
+
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    t_field* field = (*m_iter);
+    
+    indent(out) << "case " << constant_name(field->get_name()) << ":" << endl;
+    indent_up();
+    indent(out) << type_name(field->get_type(), true, false) << " " << field->get_name() 
+      << " = (" <<  type_name(field->get_type(), true, false) << ")getFieldValue();" << endl;
+    generate_serialize_field(out, field, "");
+    indent(out) << "return;" << endl;
+    indent_down();
+  }
+  
+  indent(out) << "default:" << endl;
+  indent(out) << "  throw new IllegalStateException(\"Cannot write union with unknown field \" + setField);" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl;
+
+  indent_down();
+
+
+
+  indent(out) << "}" << endl;
+}
+
+void t_java_generator::generate_get_field_desc(ofstream& out, t_struct* tstruct) {
+  indent(out) << "@Override" << endl;
+  indent(out) << "protected TField getFieldDesc(_Fields setField) {" << endl;
+  indent_up();
+  
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  indent(out) << "switch (setField) {" << endl;
+  indent_up();
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    t_field* field = (*m_iter);
+    indent(out) << "case " << constant_name(field->get_name()) << ":" << endl;
+    indent(out) << "  return " << constant_name(field->get_name()) << "_FIELD_DESC;" << endl;
+  }
+
+  indent(out) << "default:" << endl;
+  indent(out) << "  throw new IllegalArgumentException(\"Unknown field id \" + setField);" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl;
+}
+
+void t_java_generator::generate_get_struct_desc(ofstream& out, t_struct* tstruct) {
+  indent(out) << "@Override" << endl;
+  indent(out) << "protected TStruct getStructDesc() {" << endl;
+  indent(out) << "  return STRUCT_DESC;" << endl;
+  indent(out) << "}" << endl;
+}
+
+void t_java_generator::generate_union_comparisons(ofstream& out, t_struct* tstruct) {
+  // equality
+  indent(out) << "public boolean equals(Object other) {" << endl;
+  indent(out) << "  if (other instanceof " << tstruct->get_name() << ") {" << endl;
+  indent(out) << "    return equals((" << tstruct->get_name() << ")other);" << endl;
+  indent(out) << "  } else {" << endl;
+  indent(out) << "    return false;" << endl;
+  indent(out) << "  }" << endl;
+  indent(out) << "}" << endl;
+
+  out << endl;
+
+  indent(out) << "public boolean equals(" << tstruct->get_name() << " other) {" << endl;
+  indent(out) << "  return other != null && getSetField() == other.getSetField() && ((value_ instanceof byte[]) ? " << endl;
+  indent(out) << "    Arrays.equals((byte[])getFieldValue(), (byte[])other.getFieldValue()) : getFieldValue().equals(other.getFieldValue()));" << endl;
+  indent(out) << "}" << endl;
+  out << endl;
+
+  if (is_comparable(tstruct)) {
+    indent(out) << "@Override" << endl;
+    indent(out) << "public int compareTo(" << type_name(tstruct) << " other) {" << endl;
+    indent(out) << "  int lastComparison = TBaseHelper.compareTo(getSetField(), other.getSetField());" << endl;
+    indent(out) << "  if (lastComparison == 0) {" << endl;
+    indent(out) << "    Object myValue = getFieldValue();" << endl;
+    indent(out) << "    if (myValue instanceof byte[]) {" << endl;
+    indent(out) << "      return TBaseHelper.compareTo((byte[])myValue, (byte[])other.getFieldValue());" << endl;
+    indent(out) << "    } else {" << endl;
+    indent(out) << "      return TBaseHelper.compareTo((Comparable)myValue, (Comparable)other.getFieldValue());" << endl;
+    indent(out) << "    }" << endl;
+    indent(out) << "  }" << endl;
+    indent(out) << "  return lastComparison;" << endl;
+    indent(out) << "}" << endl;
+    out << endl;
+  }
+}
+
+void t_java_generator::generate_union_hashcode(ofstream& out, t_struct* tstruct) {
+  if (gen_hash_code_) {
+    indent(out) << "@Override" << endl;
+    indent(out) << "public int hashCode() {" << endl;
+    indent(out) << "  return new HashCodeBuilder().append(getSetField().getThriftFieldId()).append((getFieldValue() instanceof TEnum) ? ((TEnum)getFieldValue()).getValue() : getFieldValue()).toHashCode();" << endl;
+    indent(out) << "}";
+  } else {
+    indent(out) << "/**" << endl;
+    indent(out) << " * If you'd like this to perform more respectably, use the hashcode generator option." << endl;
+    indent(out) << " */" << endl;
+    indent(out) << "@Override" << endl;
+    indent(out) << "public int hashCode() {" << endl;
+    indent(out) << "  return 0;" << endl;
+    indent(out) << "}" << endl;
+  }
+}
+
+/**
  * Java struct definition. This has various parameters, as it could be
  * generated standalone or inside another class as a helper. If it
  * is a helper than it is a static class.
@@ -565,19 +1026,37 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
                                                        bool is_result) {
   generate_java_doc(out, tstruct);
 
+  bool is_final = (tstruct->annotations_.find("final") != tstruct->annotations_.end());
+
   indent(out) <<
-    "public " << (in_class ? "static " : "") << "class " << tstruct->get_name() << " ";
+    "public " << (is_final ? "final " : "") <<
+     (in_class ? "static " : "") << "class " << tstruct->get_name() << " ";
 
   if (is_exception) {
     out << "extends Exception ";
   }
-  out << "implements TBase, java.io.Serializable, Cloneable ";
+  out << "implements TBase<" << tstruct->get_name() << "._Fields>, java.io.Serializable, Cloneable";
+
+  if (is_comparable(tstruct)) {
+    out << ", Comparable<" << type_name(tstruct) << ">";
+  }
+
+  out << " ";
 
   scope_up(out);
+
+  generate_struct_desc(out, tstruct);
 
   // Members are public for -java, private for -javabean
   const vector<t_field*>& members = tstruct->get_members();
   vector<t_field*>::const_iterator m_iter;
+
+  out << endl;
+
+  generate_field_descs(out, tstruct);
+
+  out << endl;
+
   for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
     if (bean_style_) {
       indent(out) << "private ";
@@ -586,26 +1065,37 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
       indent(out) << "public ";
     }
     out << declare_field(*m_iter, false) << endl;
-
-    indent(out) << "public static final int " << upcase_string((*m_iter)->get_name()) << " = " << (*m_iter)->get_key() << ";" << endl;
   }
 
-  // Inner Isset class
+  out << endl;
+
+  generate_field_name_constants(out, tstruct);
+
+  // isset data
   if (members.size() > 0) {
-    out <<
-      endl <<
-      indent() << "public final Isset __isset = new Isset();" << endl <<
-      indent() << "public static final class Isset implements java.io.Serializable {" << endl;
-    indent_up();
-      for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-        indent(out) <<
-          "public boolean " << (*m_iter)->get_name() << " = false;" <<  endl;
+    out << endl;
+
+    indent(out) << "// isset id assignments" << endl;
+
+    int i = 0;
+    for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+      if (!type_can_be_null((*m_iter)->get_type())) {
+        indent(out) << "private static final int " << isset_field_id(*m_iter)
+          << " = " << i << ";" <<  endl;
+        i++;
       }
-    indent_down();
-    out <<
-      indent() << "}" << endl <<
-      endl;
+    }
+
+    if (i > 0) {
+      indent(out) << "private BitSet __isset_bit_vector = new BitSet(" << i << ");" << endl;
+    }
+
+    out << endl;
   }
+
+  generate_java_meta_data_map(out, tstruct);
+
+  bool all_optional_members = true;
 
   // Default constructor
   indent(out) <<
@@ -616,22 +1106,27 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
     if ((*m_iter)->get_value() != NULL) {
       print_const_value(out, "this." + (*m_iter)->get_name(), t, (*m_iter)->get_value(), true, true);
     }
+    if ((*m_iter)->get_req() != t_field::T_OPTIONAL) {
+      all_optional_members = false;
+    }
   }
   indent_down();
   indent(out) << "}" << endl << endl;
 
-
-  if (!members.empty()) {
+  if (!members.empty() && !all_optional_members) {
     // Full constructor for all fields
     indent(out) <<
       "public " << tstruct->get_name() << "(" << endl;
     indent_up();
-    for (m_iter = members.begin(); m_iter != members.end(); ) {
-      indent(out) << type_name((*m_iter)->get_type()) << " " <<
-        (*m_iter)->get_name();
-      ++m_iter;
-      if (m_iter != members.end()) {
-        out << "," << endl;
+    bool first = true;
+    for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+      if ((*m_iter)->get_req() != t_field::T_OPTIONAL) {
+        if (!first) {
+          out << "," << endl;
+        }
+        first = false;
+        indent(out) << type_name((*m_iter)->get_type()) << " " <<
+          (*m_iter)->get_name();
       }
     }
     out << ")" << endl;
@@ -640,15 +1135,11 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
     indent_up();
     indent(out) << "this();" << endl;
     for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-      indent(out) << "this." << (*m_iter)->get_name() << " = " <<
-        (*m_iter)->get_name() << ";" << endl;
-      indent(out) << "this.__isset." << (*m_iter)->get_name() << " = ";
-      if (type_can_be_null((*m_iter)->get_type())) {
-        out << "(" << (*m_iter)->get_name() << " != null)";
-      } else {
-        out << "true";
+      if ((*m_iter)->get_req() != t_field::T_OPTIONAL) {
+        indent(out) << "this." << (*m_iter)->get_name() << " = " <<
+          (*m_iter)->get_name() << ";" << endl;
+        generate_isset_set(out, (*m_iter));
       }
-      out << ";" << endl;
     }
     indent_down();
     indent(out) << "}" << endl << endl;
@@ -661,15 +1152,19 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
   indent(out) << "public " << tstruct->get_name() << "(" << tstruct->get_name() << " other) {" << endl;
   indent_up();
 
+  if (has_bit_vector(tstruct)) {
+    indent(out) << "__isset_bit_vector.clear();" << endl;
+    indent(out) << "__isset_bit_vector.or(other.__isset_bit_vector);" << endl;    
+  }
+
   for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
     t_field* field = (*m_iter);
     std::string field_name = field->get_name();
     t_type* type = field->get_type();
+    bool can_be_null = type_can_be_null(type);
 
-    indent(out) << "__isset." << field_name << " = other.__isset." << field_name << ";" << endl;
-
-    if (type_can_be_null(type)) {
-      indent(out) << "if (other." << field_name << " != null) {" << endl;
+    if (can_be_null) {
+      indent(out) << "if (other." << generate_isset_check(field) << ") {" << endl;
       indent_up();
     }
 
@@ -678,11 +1173,11 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
       indent(out) << "this." << field_name << " = __this__" << field_name << ";" << endl;
     } else {
       indent(out) << "this." << field_name << " = ";
-      generate_deep_copy_non_container(out, "other." + field_name, type);
+      generate_deep_copy_non_container(out, "other." + field_name, field_name, type);
       out << ";" << endl;
     }
 
-    if (type_can_be_null(type)) {
+    if (can_be_null) {
       indent_down();
       indent(out) << "}" << endl;
     }
@@ -692,17 +1187,23 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
   indent(out) << "}" << endl << endl;
 
   // clone method, so that you can deep copy an object when you don't know its class.
+  indent(out) << "public " << tstruct->get_name() << " deepCopy() {" << endl;
+  indent(out) << "  return new " << tstruct->get_name() << "(this);" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "@Deprecated" << endl;
   indent(out) << "public " << tstruct->get_name() << " clone() {" << endl;
   indent(out) << "  return new " << tstruct->get_name() << "(this);" << endl;
   indent(out) << "}" << endl << endl;
 
-
-  if (bean_style_) {
-    generate_java_bean_boilerplate(out, tstruct);
-    generate_generic_field_getters_setters(out, tstruct);
-  }
+  generate_java_bean_boilerplate(out, tstruct);
+  generate_generic_field_getters_setters(out, tstruct);
+  generate_generic_isset_method(out, tstruct);
 
   generate_java_struct_equality(out, tstruct);
+  if (is_comparable(tstruct)) {
+    generate_java_struct_compare_to(out, tstruct);
+  }
 
   generate_java_struct_reader(out, tstruct);
   if (is_result) {
@@ -711,6 +1212,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
     generate_java_struct_writer(out, tstruct);
   }
   generate_java_struct_tostring(out, tstruct);
+  generate_java_validator(out, tstruct);
   scope_down(out);
   out << endl;
 }
@@ -722,7 +1224,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
  */
 void t_java_generator::generate_java_struct_equality(ofstream& out,
                                                      t_struct* tstruct) {
-  out <<
+  out << indent() << "@Override" << endl <<
     indent() << "public boolean equals(Object that) {" << endl;
   indent_up();
   out <<
@@ -757,13 +1259,9 @@ void t_java_generator::generate_java_struct_equality(ofstream& out,
     string that_present = "true";
     string unequal;
 
-    if (is_optional) {
-      this_present += " && (this.__isset." + name + ")";
-      that_present += " && (that.__isset." + name + ")";
-    }
-    if (can_be_null) {
-      this_present += " && (this." + name + " != null)";
-      that_present += " && (that." + name + " != null)";
+    if (is_optional || can_be_null) {
+      this_present += " && this." + generate_isset_check(*m_iter);
+      that_present += " && that." + generate_isset_check(*m_iter);
     }
 
     out <<
@@ -798,13 +1296,11 @@ void t_java_generator::generate_java_struct_equality(ofstream& out,
   scope_down(out);
   out << endl;
 
+  out << indent() << "@Override" << endl <<
+    indent() << "public int hashCode() {" << endl;
+  indent_up();
   if (gen_hash_code_) {
-    out <<
-      indent() << "public int hashCode() {" << endl;
-    indent_up();
-
-    out <<
-      indent() << "HashCodeBuilder builder = new HashCodeBuilder();" << endl;
+    indent(out) << "HashCodeBuilder builder = new HashCodeBuilder();" << endl;
 
     for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
       out << endl;
@@ -816,36 +1312,61 @@ void t_java_generator::generate_java_struct_equality(ofstream& out,
 
       string present = "true";
 
-      if (is_optional) {
-        present += " && (__isset." + name + ")";
-      }
-      if (can_be_null) {
-        present += " && (" + name + " != null)";
+      if (is_optional || can_be_null) {
+        present += " && (" + generate_isset_check(*m_iter) + ")";
       }
 
-      out <<
-        indent() << "boolean present_" << name << " = "
-                 << present << ";" << endl <<
-        indent() << "builder.append(present_" << name << ");" << endl <<
-        indent() << "if (present_" << name << ")" << endl <<
-        indent() << "  builder.append(" << name << ");" << endl;
+      indent(out) << "boolean present_" << name << " = " << present << ";" << endl;
+      indent(out) << "builder.append(present_" << name << ");" << endl;
+      indent(out) << "if (present_" << name << ")" << endl;
+      if (t->is_enum()) {
+        indent(out) << "  builder.append(" << name << ".getValue());" << endl;
+      } else {
+        indent(out) << "  builder.append(" << name << ");" << endl;
+      }
     }
 
     out << endl;
-    out <<
-      indent() << "return builder.toHashCode();" << endl;
-    scope_down(out);
-    out << endl;
-
+    indent(out) << "return builder.toHashCode();" << endl;
   } else {
-    out <<
-      indent() << "public int hashCode() {" << endl;
-    indent_up();
-    out <<
-      indent() << "return 0;" << endl;
-    scope_down(out);
-    out << endl;
+    indent(out) << "return 0;" << endl;
   }
+  indent_down();
+  indent(out) << "}" << endl << endl;
+}
+
+void t_java_generator::generate_java_struct_compare_to(ofstream& out, t_struct* tstruct) {
+  indent(out) << "public int compareTo(" << type_name(tstruct) << " other) {" << endl;
+  indent_up();
+
+  indent(out) << "if (!getClass().equals(other.getClass())) {" << endl;
+  indent(out) << "  return getClass().getName().compareTo(other.getClass().getName());" << endl;
+  indent(out) << "}" << endl;
+  out << endl;
+
+  indent(out) << "int lastComparison = 0;" << endl;
+  indent(out) << type_name(tstruct) << " typedOther = (" << type_name(tstruct) << ")other;" << endl;
+  out << endl;
+
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    t_field* field = *m_iter;
+    indent(out) << "lastComparison = Boolean.valueOf(" << generate_isset_check(field) << ").compareTo(" << generate_isset_check(field) << ");" << endl;
+    indent(out) << "if (lastComparison != 0) {" << endl;
+    indent(out) << "  return lastComparison;" << endl;
+    indent(out) << "}" << endl;
+
+    indent(out) << "lastComparison = TBaseHelper.compareTo(" << field->get_name() << ", typedOther." << field->get_name() << ");" << endl;
+    indent(out) << "if (lastComparison != 0) {" << endl;
+    indent(out) << "  return lastComparison;" << endl;
+    indent(out) << "}" << endl;
+  }
+
+  indent(out) << "return 0;" << endl;
+
+  indent_down();
+  indent(out) << "}" << endl << endl;
 }
 
 /**
@@ -887,39 +1408,38 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
       "}" << endl;
 
     // Switch statement on the field we are reading
-    indent(out) <<
-      "switch (field.id)" << endl;
+    indent(out) << "_Fields fieldId = _Fields.findByThriftId(field.id);" << endl;
+    indent(out) << "if (fieldId == null) {" << endl;
+    indent(out) << "  TProtocolUtil.skip(iprot, field.type);" << endl;
+    indent(out) << "} else {" << endl;
+    indent_up();
 
-      scope_up(out);
+    indent(out) << "switch (fieldId) {" << endl;
 
-      // Generate deserialization code for known cases
-      for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-        indent(out) <<
-          "case " << upcase_string((*f_iter)->get_name()) << ":" << endl;
-        indent_up();
-        indent(out) <<
-          "if (field.type == " << type_to_enum((*f_iter)->get_type()) << ") {" << endl;
-        indent_up();
+    indent_up();
 
-        generate_deserialize_field(out, *f_iter, "this.");
-        out <<
-          indent() << "this.__isset." << (*f_iter)->get_name() << " = true;" << endl;
-        indent_down();
-        out <<
-          indent() << "} else { " << endl <<
-          indent() << "  TProtocolUtil.skip(iprot, field.type);" << endl <<
-          indent() << "}" << endl <<
-          indent() << "break;" << endl;
-        indent_down();
-      }
+    // Generate deserialization code for known cases
+    for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+      indent(out) <<
+        "case " << constant_name((*f_iter)->get_name()) << ":" << endl;
+      indent_up();
+      indent(out) <<
+        "if (field.type == " << type_to_enum((*f_iter)->get_type()) << ") {" << endl;
+      indent_up();
 
-      // In the default case we skip the field
+      generate_deserialize_field(out, *f_iter, "this.");
+      generate_isset_set(out, *f_iter);
+      indent_down();
       out <<
-        indent() << "default:" << endl <<
+        indent() << "} else { " << endl <<
         indent() << "  TProtocolUtil.skip(iprot, field.type);" << endl <<
-        indent() << "  break;" << endl;
+        indent() << "}" << endl <<
+        indent() << "break;" << endl;
+      indent_down();
+    }
 
-      scope_down(out);
+    indent_down();
+    indent(out) << "}" << endl;
 
     // Read field end marker
     indent(out) <<
@@ -927,24 +1447,67 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
 
     scope_down(out);
 
+    indent_down();
+    indent(out) << "}" << endl;
+
     out <<
       indent() << "iprot.readStructEnd();" << endl;
 
-    // check to make sure all required fields are set
-    out << endl << indent() << "// check for required fields" << endl;
-    for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-      if ((*f_iter)->get_req() == t_field::T_REQUIRED) {
-        out <<
-          indent() << "if (!__isset." << (*f_iter)->get_name() << ") {" << endl <<
-          indent() << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' was not found in serialized data!\");" << endl <<
-          indent() << "}" << endl;
+    // in non-beans style, check for required fields of primitive type
+    // (which can be checked here but not in the general validate method)
+    if (!bean_style_){
+      out << endl << indent() << "// check for required fields of primitive type, which can't be checked in the validate method" << endl;
+      for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+        if ((*f_iter)->get_req() == t_field::T_REQUIRED && !type_can_be_null((*f_iter)->get_type())) {
+          out <<
+            indent() << "if (!" << generate_isset_check(*f_iter) << ") {" << endl <<
+            indent() << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' was not found in serialized data! Struct: \" + toString());" << endl <<
+            indent() << "}" << endl;
+        }
       }
     }
+
+    // performs various checks (e.g. check that all required fields are set)
+    indent(out) << "validate();" << endl;
 
   indent_down();
   out <<
     indent() << "}" << endl <<
     endl;
+}
+
+// generates java method to perform various checks
+// (e.g. check that all required fields are set)
+void t_java_generator::generate_java_validator(ofstream& out,
+                                                   t_struct* tstruct){
+  indent(out) << "public void validate() throws TException {" << endl;
+  indent_up();
+
+  const vector<t_field*>& fields = tstruct->get_members();
+  vector<t_field*>::const_iterator f_iter;
+
+  out << indent() << "// check for required fields" << endl;
+  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+    if ((*f_iter)->get_req() == t_field::T_REQUIRED) {
+      if (bean_style_) {
+        out <<
+          indent() << "if (!" << generate_isset_check(*f_iter) << ") {" << endl <<
+          indent() << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' is unset! Struct:\" + toString());" << endl <<
+          indent() << "}" << endl << endl;
+      } else{
+        if (type_can_be_null((*f_iter)->get_type())) {
+          indent(out) << "if (" << (*f_iter)->get_name() << " == null) {" << endl;
+          indent(out) << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' was not present! Struct: \" + toString());" << endl;
+          indent(out) << "}" << endl;
+        } else {
+          indent(out) << "// alas, we cannot check '" << (*f_iter)->get_name() << "' because it's a primitive and you chose the non-beans generator." << endl;
+        }
+      }
+    }
+  }
+
+  indent_down();
+  indent(out) << "}" << endl << endl;
 }
 
 /**
@@ -959,37 +1522,14 @@ void t_java_generator::generate_java_struct_writer(ofstream& out,
   indent_up();
 
   string name = tstruct->get_name();
-  const vector<t_field*>& fields = tstruct->get_members();
+  const vector<t_field*>& fields = tstruct->get_sorted_members();
   vector<t_field*>::const_iterator f_iter;
 
-  // check for required fields
-  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    t_field* field = (*f_iter);
-    if (field->get_req() == t_field::T_REQUIRED) {
-      if (bean_style_) {
-        indent(out) << "if (!__isset." << field->get_name() << ") {" << endl;
-        indent(out) << "  throw new TProtocolException(\"Required field '" << field->get_name() << "' was not present!\");" << endl;
-        indent(out) << "}" << endl;
-      } else {
-        if (type_can_be_null(field->get_type())) {
-          indent(out) << "if (" << field->get_name() << " == null) {" << endl;
-          indent(out) << "  throw new TProtocolException(\"Required field '" << field->get_name() << "' was not present!\");" << endl;
-          indent(out) << "}" << endl;
-        } else {
-          indent(out) << "// alas, we cannot check '" << field->get_name() << "' because it's a primitive and you chose the non-beans generator." << endl;
-        }
-      }
-    }
-  }
+  // performs various checks (e.g. check that all required fields are set)
+  indent(out) << "validate();" << endl << endl;
 
-  out << endl << endl;
+  indent(out) << "oprot.writeStructBegin(STRUCT_DESC);" << endl;
 
-  indent(out) << "TStruct struct = new TStruct(\"" << name << "\");" << endl;
-  indent(out) << "oprot.writeStructBegin(struct);" << endl;
-
-  if (!fields.empty()) {
-    indent(out) << "TField field = new TField();" << endl;
-  }
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
     bool null_allowed = type_can_be_null((*f_iter)->get_type());
     if (null_allowed) {
@@ -997,18 +1537,13 @@ void t_java_generator::generate_java_struct_writer(ofstream& out,
         indent() << "if (this." << (*f_iter)->get_name() << " != null) {" << endl;
       indent_up();
     }
-    bool optional = bean_style_ && (*f_iter)->get_req() == t_field::T_OPTIONAL;
+    bool optional = (*f_iter)->get_req() == t_field::T_OPTIONAL;
     if (optional) {
-      out <<
-        indent() << "if (this.__isset." << (*f_iter)->get_name() << ") {" << endl;
+      indent(out) << "if (" << generate_isset_check((*f_iter)) << ") {" << endl;
       indent_up();
     }
 
-    out <<
-      indent() << "field.name = \"" << (*f_iter)->get_name() << "\";" << endl <<
-      indent() << "field.type = " << type_to_enum((*f_iter)->get_type()) << ";" << endl <<
-      indent() << "field.id = " << upcase_string((*f_iter)->get_name()) << ";" << endl <<
-      indent() << "oprot.writeFieldBegin(field);" << endl;
+    indent(out) << "oprot.writeFieldBegin(" << constant_name((*f_iter)->get_name()) << "_FIELD_DESC);" << endl;
 
     // Write field contents
     generate_serialize_field(out, *f_iter, "this.");
@@ -1052,15 +1587,11 @@ void t_java_generator::generate_java_struct_result_writer(ofstream& out,
   indent_up();
 
   string name = tstruct->get_name();
-  const vector<t_field*>& fields = tstruct->get_members();
+  const vector<t_field*>& fields = tstruct->get_sorted_members();
   vector<t_field*>::const_iterator f_iter;
 
-  indent(out) << "TStruct struct = new TStruct(\"" << name << "\");" << endl;
-  indent(out) << "oprot.writeStructBegin(struct);" << endl;
+  indent(out) << "oprot.writeStructBegin(STRUCT_DESC);" << endl;
 
-  if (!fields.empty()) {
-    indent(out) << "TField field = new TField();" << endl;
-  }
   bool first = true;
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
     if (first) {
@@ -1069,26 +1600,14 @@ void t_java_generator::generate_java_struct_result_writer(ofstream& out,
         endl <<
         indent() << "if ";
     } else {
-      out <<
-        " else if ";
+      out << " else if ";
     }
 
-    out <<
-      "(this.__isset." << (*f_iter)->get_name() << ") {" << endl;
+    out << "(this." << generate_isset_check(*f_iter) << ") {" << endl;
+
     indent_up();
-
-    bool null_allowed = type_can_be_null((*f_iter)->get_type());
-    if (null_allowed) {
-      out <<
-        indent() << "if (this." << (*f_iter)->get_name() << " != null) {" << endl;
-      indent_up();
-    }
-
-    out <<
-      indent() << "field.name = \"" << (*f_iter)->get_name() << "\";" << endl <<
-      indent() << "field.type = " << type_to_enum((*f_iter)->get_type()) << ";" << endl <<
-      indent() << "field.id = " << upcase_string((*f_iter)->get_name()) << ";" << endl <<
-      indent() << "oprot.writeFieldBegin(field);" << endl;
+    
+    indent(out) << "oprot.writeFieldBegin(" << constant_name((*f_iter)->get_name()) << "_FIELD_DESC);" << endl;
 
     // Write field contents
     generate_serialize_field(out, *f_iter, "this.");
@@ -1096,11 +1615,6 @@ void t_java_generator::generate_java_struct_result_writer(ofstream& out,
     // Write field closer
     indent(out) <<
       "oprot.writeFieldEnd();" << endl;
-
-    if (null_allowed) {
-      indent_down();
-      indent(out) << "}" << endl;
-    }
 
     indent_down();
     indent(out) << "}";
@@ -1118,7 +1632,7 @@ void t_java_generator::generate_java_struct_result_writer(ofstream& out,
 }
 
 void t_java_generator::generate_reflection_getters(ostringstream& out, t_type* type, string field_name, string cap_name) {
-  indent(out) << "case " << upcase_string(field_name) << ":" << endl;
+  indent(out) << "case " << constant_name(field_name) << ":" << endl;
   indent_up();
 
   if (type->is_base_type() && !type->is_string()) {
@@ -1133,10 +1647,13 @@ void t_java_generator::generate_reflection_getters(ostringstream& out, t_type* t
 }
 
 void t_java_generator::generate_reflection_setters(ostringstream& out, t_type* type, string field_name, string cap_name) {
-  indent(out) << "case " << upcase_string(field_name) << ":" << endl;
+  indent(out) << "case " << constant_name(field_name) << ":" << endl;
   indent_up();
-
-  indent(out) << "set" << cap_name << "((" << type_name(type, true, false) << ")value);" << endl;
+  indent(out) << "if (value == null) {" << endl;
+  indent(out) << "  unset" << get_cap_name(field_name) << "();" << endl;
+  indent(out) << "} else {" << endl;
+  indent(out) << "  set" << cap_name << "((" << type_name(type, true, false) << ")value);" << endl;
+  indent(out) << "}" << endl;
   indent(out) << "break;" << endl << endl;
 
   indent_down();
@@ -1154,12 +1671,7 @@ void t_java_generator::generate_generic_field_getters_setters(std::ofstream& out
     t_field* field = *f_iter;
     t_type* type = get_true_type(field->get_type());
     std::string field_name = field->get_name();
-    std::string cap_name = field_name;
-    if (nocamel_style_) {
-      cap_name = "_" + cap_name;
-    } else {
-      cap_name[0] = toupper(cap_name[0]);
-    }
+    std::string cap_name = get_cap_name(field_name);
 
     indent_up();
     generate_reflection_setters(setter_stream, type, field_name, cap_name);
@@ -1169,40 +1681,60 @@ void t_java_generator::generate_generic_field_getters_setters(std::ofstream& out
 
 
   // create the setter
-  indent(out) << "public void setFieldValue(int fieldID, Object value) {" << endl;
-  indent_up();
-
-  indent(out) << "switch (fieldID) {" << endl;
-
+  
+  indent(out) << "public void setFieldValue(_Fields field, Object value) {" << endl;
+  indent(out) << "  switch (field) {" << endl;
   out << setter_stream.str();
+  indent(out) << "  }" << endl;
+  indent(out) << "}" << endl << endl;
 
-  indent(out) << "default:" << endl;
-  indent(out) << "  throw new IllegalArgumentException(\"Field \" + fieldID + \" doesn't exist!\");" << endl;
-
-  indent(out) << "}" << endl;
-
-  indent_down();
+  indent(out) << "public void setFieldValue(int fieldID, Object value) {" << endl;
+  indent(out) << "  setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);" << endl;
   indent(out) << "}" << endl << endl;
 
   // create the getter
-  indent(out) << "public Object getFieldValue(int fieldID) {" << endl;
+  indent(out) << "public Object getFieldValue(_Fields field) {" << endl;
   indent_up();
-
-  indent(out) << "switch (fieldID) {" << endl;
-
+  indent(out) << "switch (field) {" << endl;
   out << getter_stream.str();
-
-  indent(out) << "default:" << endl;
-  indent(out) << "  throw new IllegalArgumentException(\"Field \" + fieldID + \" doesn't exist!\");" << endl;
-
   indent(out) << "}" << endl;
-
+  indent(out) << "throw new IllegalStateException();" << endl;
   indent_down();
+  indent(out) << "}" << endl << endl;
 
+  indent(out) << "public Object getFieldValue(int fieldId) {" << endl;
+  indent(out) << "  return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));" << endl;
   indent(out) << "}" << endl << endl;
 }
 
+// Creates a generic isSet method that takes the field number as argument
+void t_java_generator::generate_generic_isset_method(std::ofstream& out, t_struct* tstruct){
+  const vector<t_field*>& fields = tstruct->get_members();
+  vector<t_field*>::const_iterator f_iter;
 
+  // create the isSet method
+  indent(out) << "/** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */" << endl;
+  indent(out) << "public boolean isSet(_Fields field) {" << endl;
+  indent_up();
+  indent(out) << "switch (field) {" << endl;
+
+  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+    t_field* field = *f_iter;
+    indent(out) << "case " << constant_name(field->get_name()) << ":" << endl;
+    indent_up();
+    indent(out) << "return " << generate_isset_check(field) << ";" << endl;
+    indent_down();
+  }
+
+  indent(out) << "}" << endl;
+  indent(out) << "throw new IllegalStateException();" << endl;
+  indent_down();
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "public boolean isSet(int fieldID) {" << endl;
+  indent(out) << "  return isSet(_Fields.findByThriftIdOrThrow(fieldID));" << endl;
+  indent(out) << "}" << endl << endl;
+}
 
 /**
  * Generates a set of Java Bean boilerplate functions (setters, getters, etc.)
@@ -1218,22 +1750,12 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
     t_field* field = *f_iter;
     t_type* type = get_true_type(field->get_type());
     std::string field_name = field->get_name();
-    std::string cap_name = field_name;
-    if (nocamel_style_) {
-      cap_name = "_" + cap_name;
-    } else {
-      cap_name[0] = toupper(cap_name[0]);
-    }
+    std::string cap_name = get_cap_name(field_name);
 
     if (type->is_container()) {
       // Method to return the size of the collection
       indent(out) << "public int get" << cap_name;
-      if (nocamel_style_) {
-        out << "_size";
-      } else {
-        out << "Size";
-      }
-      out << "() {" << endl;
+      out << get_cap_name("size() {") << endl;
 
       indent_up();
       indent(out) << "return (this." << field_name << " == null) ? 0 : " <<
@@ -1254,11 +1776,7 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
       // Iterator getter for sets and lists
       indent(out) << "public java.util.Iterator<" <<
         type_name(element_type, true, false) <<  "> get" << cap_name;
-      if (nocamel_style_) {
-        out << "_iterator() {" << endl;
-      } else {
-        out << "Iterator() {" << endl;
-      }
+      out << get_cap_name("iterator() {") << endl;
 
       indent_up();
       indent(out) << "return (this." << field_name << " == null) ? null : " <<
@@ -1268,11 +1786,7 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
 
       // Add to set or list, create if the set/list is null
       indent(out);
-      if (nocamel_style_) {
-        out << "public void add_to";
-      } else {
-        out << "public void addTo";
-      }
+      out << "public void add" << get_cap_name("to");
       out << cap_name << "(" << type_name(element_type) << " elem) {" << endl;
 
       indent_up();
@@ -1283,7 +1797,6 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
       indent_down();
       indent(out) << "}" << endl;
       indent(out) << "this." << field_name << ".add(elem);" << endl;
-      indent(out) << "this.__isset." << field_name << " = true;" << endl;
       indent_down();
       indent(out) << "}" << endl << endl;
 
@@ -1293,11 +1806,7 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
       t_type* val_type = ((t_map*)type)->get_val_type();
 
       indent(out);
-      if (nocamel_style_) {
-        out << "public void put_to";
-      } else {
-        out << "public void putTo";
-      }
+      out << "public void put" << get_cap_name("to");
       out << cap_name << "(" << type_name(key_type) << " key, "
         << type_name(val_type) << " val) {" << endl;
 
@@ -1309,7 +1818,6 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
       indent_down();
       indent(out) << "}" << endl;
       indent(out) << "this." << field_name << ".put(key, val);" << endl;
-      indent(out) << "this.__isset." << field_name << " = true;" << endl;
       indent_down();
       indent(out) << "}" << endl << endl;
     }
@@ -1331,17 +1839,13 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
 
     // Simple setter
     generate_java_doc(out, field);
-    indent(out) << "public void set" << cap_name << "(" << type_name(type) <<
+    indent(out) << "public " << type_name(tstruct) << " set" << cap_name << "(" << type_name(type) <<
       " " << field_name << ") {" << endl;
     indent_up();
     indent(out) << "this." << field_name << " = " << field_name << ";" <<
       endl;
-    // if the type isn't nullable, then the setter can't have been an unset in disguise.
-    if ((type->is_base_type() && !type->is_string()) || type->is_enum() ) {
-      indent(out) << "this.__isset." << field_name << " = true;" << endl;
-    } else {
-      indent(out) << "this.__isset." << field_name << " = (" << field_name << " != null);" << endl;
-    }
+    generate_isset_set(out, field);
+    indent(out) << "return this;" << endl;
 
     indent_down();
     indent(out) << "}" << endl << endl;
@@ -1349,12 +1853,37 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
     // Unsetter
     indent(out) << "public void unset" << cap_name << "() {" << endl;
     indent_up();
-    if (type->is_container() || type->is_struct() || type->is_xception()) {
+    if (type_can_be_null(type)) {
       indent(out) << "this." << field_name << " = null;" << endl;
+    } else {
+      indent(out) << "__isset_bit_vector.clear(" << isset_field_id(field) << ");" << endl;
     }
-    indent(out) << "this.__isset." << field_name << " = false;" << endl;
     indent_down();
     indent(out) << "}" << endl << endl;
+
+    // isSet method
+    indent(out) << "/** Returns true if field " << field_name << " is set (has been asigned a value) and false otherwise */" << endl;
+    indent(out) << "public boolean is" << get_cap_name("set") << cap_name << "() {" << endl;
+    indent_up();
+    if (type_can_be_null(type)) {
+      indent(out) << "return this." << field_name << " != null;" << endl;
+    } else {
+      indent(out) << "return __isset_bit_vector.get(" << isset_field_id(field) << ");" << endl;
+    }
+    indent_down();
+    indent(out) << "}" << endl << endl;
+
+    indent(out) << "public void set" << cap_name << get_cap_name("isSet") << "(boolean value) {" << endl;
+    indent_up();
+    if (type_can_be_null(type)) {
+      indent(out) << "if (!value) {" << endl;
+      indent(out) << "  this." << field_name << " = null;" << endl;
+      indent(out) << "}" << endl;
+    } else {
+      indent(out) << "__isset_bit_vector.set(" << isset_field_id(field) << ", value);" << endl;
+    }
+    indent_down();
+    indent(out) << "}" << endl << endl; 
   }
 }
 
@@ -1365,7 +1894,7 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
  */
 void t_java_generator::generate_java_struct_tostring(ofstream& out,
                                                      t_struct* tstruct) {
-  out <<
+  out << indent() << "@Override" << endl <<
     indent() << "public String toString() {" << endl;
   indent_up();
 
@@ -1375,36 +1904,60 @@ void t_java_generator::generate_java_struct_tostring(ofstream& out,
 
   const vector<t_field*>& fields = tstruct->get_members();
   vector<t_field*>::const_iterator f_iter;
+  bool first = true;
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    if((*f_iter)->get_req() == t_field::T_OPTIONAL) {
-      indent(out) << "if (__isset." << (*f_iter)->get_name() << ") {" << endl;
+    bool could_be_unset = (*f_iter)->get_req() == t_field::T_OPTIONAL;
+    if(could_be_unset) {
+      indent(out) << "if (" << generate_isset_check(*f_iter) << ") {" << endl;
       indent_up();
     }
 
     t_field* field = (*f_iter);
 
-    indent(out) << "if (!first) sb.append(\", \");" << endl;
+    if (!first) {
+      indent(out) << "if (!first) sb.append(\", \");" << endl;
+    }
     indent(out) << "sb.append(\"" << (*f_iter)->get_name() << ":\");" << endl;
-    if (field->get_type()->is_base_type() && ((t_base_type*)(field->get_type()))->is_binary()) {
-      indent(out) << "if (" << field->get_name() << " == null) { " << endl;
+    bool can_be_null = type_can_be_null(field->get_type());
+    if (can_be_null) {
+      indent(out) << "if (this." << (*f_iter)->get_name() << " == null) {" << endl;
       indent(out) << "  sb.append(\"null\");" << endl;
       indent(out) << "} else {" << endl;
+      indent_up();
+    }
+    
+    if (field->get_type()->is_base_type() && ((t_base_type*)(field->get_type()))->is_binary()) {
       indent(out) << "  int __" << field->get_name() << "_size = Math.min(this." << field->get_name() << ".length, 128);" << endl;
       indent(out) << "  for (int i = 0; i < __" << field->get_name() << "_size; i++) {" << endl;
       indent(out) << "    if (i != 0) sb.append(\" \");" << endl;
       indent(out) << "    sb.append(Integer.toHexString(this." << field->get_name() << "[i]).length() > 1 ? Integer.toHexString(this." << field->get_name() << "[i]).substring(Integer.toHexString(this." << field->get_name() << "[i]).length() - 2).toUpperCase() : \"0\" + Integer.toHexString(this." << field->get_name() << "[i]).toUpperCase());" <<endl;
       indent(out) << "  }" << endl;
       indent(out) << "  if (this." << field->get_name() << ".length > 128) sb.append(\" ...\");" << endl;
+    } else if(field->get_type()->is_enum()) {
+      indent(out) << "String " << field->get_name() << "_name = " << field->get_name() << ".name();"<< endl;
+      indent(out) << "if (" << field->get_name() << "_name != null) {" << endl;
+      indent(out) << "  sb.append(" << field->get_name() << "_name);" << endl;
+      indent(out) << "  sb.append(\" (\");" << endl;
+      indent(out) << "}" << endl;
+      indent(out) << "sb.append(this." << field->get_name() << ");" << endl;
+      indent(out) << "if (" << field->get_name() << "_name != null) {" << endl;
+      indent(out) << "  sb.append(\")\");" << endl;
       indent(out) << "}" << endl;
     } else {
       indent(out) << "sb.append(this." << (*f_iter)->get_name() << ");" << endl;
     }
-    indent(out) << "first = false;" << endl;
-
-    if((*f_iter)->get_req() == t_field::T_OPTIONAL) {
+    
+    if (can_be_null) {
       indent_down();
       indent(out) << "}" << endl;
     }
+    indent(out) << "first = false;" << endl;
+
+    if(could_be_unset) {
+      indent_down();
+      indent(out) << "}" << endl;
+    }
+    first = false;
   }
   out <<
     indent() << "sb.append(\")\");" << endl <<
@@ -1413,6 +1966,118 @@ void t_java_generator::generate_java_struct_tostring(ofstream& out,
   indent_down();
   indent(out) << "}" << endl <<
     endl;
+}
+
+/**
+ * Generates a static map with meta data to store information such as fieldID to
+ * fieldName mapping
+ *
+ * @param tstruct The struct definition
+ */
+void t_java_generator::generate_java_meta_data_map(ofstream& out,
+                                                   t_struct* tstruct) {
+  const vector<t_field*>& fields = tstruct->get_members();
+  vector<t_field*>::const_iterator f_iter;
+
+  // Static Map with fieldID -> FieldMetaData mappings
+  indent(out) << "public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{" << endl;
+
+  // Populate map
+  indent_up();
+  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+    t_field* field = *f_iter;
+    std::string field_name = field->get_name();
+    indent(out) << "put(_Fields." << constant_name(field_name) << ", new FieldMetaData(\"" << field_name << "\", ";
+
+    // Set field requirement type (required, optional, etc.)
+    if (field->get_req() == t_field::T_REQUIRED) {
+      out << "TFieldRequirementType.REQUIRED, ";
+    } else if (field->get_req() == t_field::T_OPTIONAL) {
+      out << "TFieldRequirementType.OPTIONAL, ";
+    } else {
+      out << "TFieldRequirementType.DEFAULT, ";
+    }
+
+    // Create value meta data
+    generate_field_value_meta_data(out, field->get_type());
+    out  << "));" << endl;
+  }
+  indent_down();
+  indent(out) << "}});" << endl << endl;
+
+  // Static initializer to populate global class to struct metadata map
+  indent(out) << "static {" << endl;
+  indent_up();
+  indent(out) << "FieldMetaData.addStructMetaDataMap(" << type_name(tstruct) << ".class, metaDataMap);" << endl;
+  indent_down();
+  indent(out) << "}" << endl << endl;
+}
+
+/** 
+ * Returns a string with the java representation of the given thrift type
+ * (e.g. for the type struct it returns "TType.STRUCT")
+ */
+std::string t_java_generator::get_java_type_string(t_type* type) {
+  if (type->is_list()){
+    return "TType.LIST";
+  } else if (type->is_map()) {
+    return "TType.MAP";
+  } else if (type->is_set()) {
+    return "TType.SET";
+  } else if (type->is_struct() || type->is_xception()) {
+    return "TType.STRUCT";
+  } else if (type->is_enum()) {
+    return "TType.ENUM";
+  } else if (type->is_typedef()) {
+    return get_java_type_string(((t_typedef*)type)->get_type());
+  } else if (type->is_base_type()) {
+    switch (((t_base_type*)type)->get_base()) {
+      case t_base_type::TYPE_VOID   : return      "TType.VOID"; break;
+      case t_base_type::TYPE_STRING : return    "TType.STRING"; break;
+      case t_base_type::TYPE_BOOL   : return      "TType.BOOL"; break;
+      case t_base_type::TYPE_BYTE   : return      "TType.BYTE"; break;
+      case t_base_type::TYPE_I16    : return       "TType.I16"; break;
+      case t_base_type::TYPE_I32    : return       "TType.I32"; break;
+      case t_base_type::TYPE_I64    : return       "TType.I64"; break;
+      case t_base_type::TYPE_DOUBLE : return    "TType.DOUBLE"; break;
+      default : throw std::runtime_error("Unknown thrift type \"" + type->get_name() + "\" passed to t_java_generator::get_java_type_string!"); break; // This should never happen!
+    }
+  } else {
+    throw std::runtime_error("Unknown thrift type \"" + type->get_name() + "\" passed to t_java_generator::get_java_type_string!"); // This should never happen!
+  }
+}
+
+void t_java_generator::generate_field_value_meta_data(std::ofstream& out, t_type* type){
+  out << endl;
+  indent_up();
+  indent_up();
+  if (type->is_struct()){
+    indent(out) << "new StructMetaData(TType.STRUCT, " << type_name(type) << ".class";
+  } else if (type->is_container()){
+    if (type->is_list()){
+      indent(out) << "new ListMetaData(TType.LIST, ";
+      t_type* elem_type = ((t_list*)type)->get_elem_type();    
+      generate_field_value_meta_data(out, elem_type);   
+    } else if (type->is_set()){
+      indent(out) << "new SetMetaData(TType.SET, ";
+      t_type* elem_type = ((t_list*)type)->get_elem_type();    
+      generate_field_value_meta_data(out, elem_type); 
+    } else{ // map
+      indent(out) << "new MapMetaData(TType.MAP, ";
+      t_type* key_type = ((t_map*)type)->get_key_type();
+      t_type* val_type = ((t_map*)type)->get_val_type();
+      generate_field_value_meta_data(out, key_type);
+      out << ", ";
+      generate_field_value_meta_data(out, val_type);
+    }
+  } else if (type->is_enum()) {
+    indent(out) << "new EnumMetaData(TType.ENUM, " << type_name(type) << ".class";
+  } else {
+    indent(out) << "new FieldValueMetaData(" << get_java_type_string(type);
+  }
+  out << ")";
+  indent_down();
+  indent_down();
 }
 
 
@@ -1592,7 +2257,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     }
     f_service_ << ");" << endl;
 
-    if (!(*f_iter)->is_async()) {
+    if (!(*f_iter)->is_oneway()) {
       f_service_ << indent();
       if (!(*f_iter)->get_returntype()->is_void()) {
         f_service_ << "return ";
@@ -1632,7 +2297,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     scope_down(f_service_);
     f_service_ << endl;
 
-    if (!(*f_iter)->is_async()) {
+    if (!(*f_iter)->is_oneway()) {
       string resultname = (*f_iter)->get_name() + "_result";
 
       t_struct noargs(program_);
@@ -1661,7 +2326,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
       // Careful, only return _result if not a void function
       if (!(*f_iter)->get_returntype()->is_void()) {
         f_service_ <<
-          indent() << "if (result.__isset.success) {" << endl <<
+          indent() << "if (result." << generate_isset_check("success") << ") {" << endl <<
           indent() << "  return result.success;" << endl <<
           indent() << "}" << endl;
       }
@@ -1671,7 +2336,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
       vector<t_field*>::const_iterator x_iter;
       for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
         f_service_ <<
-          indent() << "if (result.__isset." << (*x_iter)->get_name() << ") {" << endl <<
+          indent() << "if (result." << (*x_iter)->get_name() << " != null) {" << endl <<
           indent() << "  throw result." << (*x_iter)->get_name() << ";" << endl <<
           indent() << "}" << endl;
       }
@@ -1718,6 +2383,8 @@ void t_java_generator::generate_service_server(t_service* tservice) {
   indent(f_service_) <<
     "public static class Processor" << extends_processor << " implements TProcessor {" << endl;
   indent_up();
+
+  indent(f_service_) << "private static final Logger LOGGER = LoggerFactory.getLogger(Processor.class.getName());" << endl;
 
   indent(f_service_) <<
     "public Processor(Iface iface)" << endl;
@@ -1802,7 +2469,7 @@ void t_java_generator::generate_service_server(t_service* tservice) {
  * @param tfunction The function
  */
 void t_java_generator::generate_function_helpers(t_function* tfunction) {
-  if (tfunction->is_async()) {
+  if (tfunction->is_oneway()) {
     return;
   }
 
@@ -1851,8 +2518,8 @@ void t_java_generator::generate_process_function(t_service* tservice,
   const std::vector<t_field*>& xceptions = xs->get_members();
   vector<t_field*>::const_iterator x_iter;
 
-  // Declare result for non async function
-  if (!tfunction->is_async()) {
+  // Declare result for non oneway function
+  if (!tfunction->is_oneway()) {
     f_service_ <<
       indent() << resultname << " result = new " << resultname << "();" << endl;
   }
@@ -1870,7 +2537,7 @@ void t_java_generator::generate_process_function(t_service* tservice,
   vector<t_field*>::const_iterator f_iter;
 
   f_service_ << indent();
-  if (!tfunction->is_async() && !tfunction->get_returntype()->is_void()) {
+  if (!tfunction->is_oneway() && !tfunction->get_returntype()->is_void()) {
     f_service_ << "result.success = ";
   }
   f_service_ <<
@@ -1887,32 +2554,42 @@ void t_java_generator::generate_process_function(t_service* tservice,
   f_service_ << ");" << endl;
 
   // Set isset on success field
-  if (!tfunction->is_async() && !tfunction->get_returntype()->is_void()) {
+  if (!tfunction->is_oneway() && !tfunction->get_returntype()->is_void() && !type_can_be_null(tfunction->get_returntype())) {
     f_service_ <<
-      indent() << "result.__isset.success = true;" << endl;
+      indent() << "result.set" << get_cap_name("success") << get_cap_name("isSet") << "(true);" << endl;
   }
 
-  if (!tfunction->is_async() && xceptions.size() > 0) {
+  if (!tfunction->is_oneway() && xceptions.size() > 0) {
     indent_down();
     f_service_ << indent() << "}";
     for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
       f_service_ << " catch (" << type_name((*x_iter)->get_type(), false, false) << " " << (*x_iter)->get_name() << ") {" << endl;
-      if (!tfunction->is_async()) {
+      if (!tfunction->is_oneway()) {
         indent_up();
         f_service_ <<
-          indent() << "result." << (*x_iter)->get_name() << " = " << (*x_iter)->get_name() << ";" << endl <<
-          indent() << "result.__isset." << (*x_iter)->get_name() << " = true;" << endl;
+          indent() << "result." << (*x_iter)->get_name() << " = " << (*x_iter)->get_name() << ";" << endl;
         indent_down();
         f_service_ << indent() << "}";
       } else {
         f_service_ << "}";
       }
     }
-    f_service_ << endl;
+    f_service_ << " catch (Throwable th) {" << endl;
+    indent_up();
+    f_service_ <<
+      indent() << "LOGGER.error(\"Internal error processing " << tfunction->get_name() << "\", th);" << endl <<
+      indent() << "TApplicationException x = new TApplicationException(TApplicationException.INTERNAL_ERROR, \"Internal error processing " << tfunction->get_name() << "\");" << endl <<
+      indent() << "oprot.writeMessageBegin(new TMessage(\"" << tfunction->get_name() << "\", TMessageType.EXCEPTION, seqid));" << endl <<
+      indent() << "x.write(oprot);" << endl <<
+      indent() << "oprot.writeMessageEnd();" << endl <<
+      indent() << "oprot.getTransport().flush();" << endl <<
+      indent() << "return;" << endl;
+    indent_down();
+    f_service_ << indent() << "}" << endl;
   }
 
-  // Shortcut out here for async functions
-  if (tfunction->is_async()) {
+  // Shortcut out here for oneway functions
+  if (tfunction->is_oneway()) {
     f_service_ <<
       indent() << "return;" << endl;
     scope_down(f_service_);
@@ -1966,14 +2643,11 @@ void t_java_generator::generate_deserialize_field(ofstream& out,
                                 name);
   } else if (type->is_container()) {
     generate_deserialize_container(out, type, name);
-  } else if (type->is_base_type() || type->is_enum()) {
+  } else if (type->is_base_type()) {
+    indent(out) << name << " = iprot.";
 
-    indent(out) <<
-      name << " = iprot.";
-
-    if (type->is_base_type()) {
-      t_base_type::t_base tbase = ((t_base_type*)type)->get_base();
-      switch (tbase) {
+    t_base_type::t_base tbase = ((t_base_type*)type)->get_base();
+    switch (tbase) {
       case t_base_type::TYPE_VOID:
         throw "compiler error: cannot serialize void field in a struct: " +
           name;
@@ -2005,12 +2679,10 @@ void t_java_generator::generate_deserialize_field(ofstream& out,
         break;
       default:
         throw "compiler error: no Java name for base type " + t_base_type::t_base_name(tbase);
-      }
-    } else if (type->is_enum()) {
-      out << "readI32();";
     }
-    out <<
-      endl;
+    out << endl;
+  } else if (type->is_enum()) {
+    indent(out) << name << " = " << type_name(tfield->get_type(), true, false) + ".findByValue(iprot.readI32());" << endl;
   } else {
     printf("DO NOT KNOW HOW TO DESERIALIZE FIELD '%s' TYPE '%s'\n",
            tfield->get_name().c_str(), type_name(type).c_str());
@@ -2146,7 +2818,7 @@ void t_java_generator::generate_deserialize_list_element(ofstream& out,
   t_field felem(tlist->get_elem_type(), elem);
 
   indent(out) <<
-    declare_field(&felem, true) << endl;
+    declare_field(&felem) << endl;
 
   generate_deserialize_field(out, &felem);
 
@@ -2180,8 +2852,9 @@ void t_java_generator::generate_serialize_field(ofstream& out,
     generate_serialize_container(out,
                                  type,
                                  prefix + tfield->get_name());
-  } else if (type->is_base_type() || type->is_enum()) {
-
+  } else if (type->is_enum()){
+    indent(out) << "oprot.writeI32(" << prefix + tfield->get_name() << ".getValue());" << endl;
+  } else if (type->is_base_type()) {
     string name = prefix + tfield->get_name();
     indent(out) <<
       "oprot.";
@@ -2278,10 +2951,11 @@ void t_java_generator::generate_serialize_container(ofstream& out,
   string iter = tmp("_iter");
   if (ttype->is_map()) {
     indent(out) <<
-      "for (" <<
-      type_name(((t_map*)ttype)->get_key_type()) << " " << iter <<
+      "for (Map.Entry<" <<
+      type_name(((t_map*)ttype)->get_key_type(), true, false) << ", " <<
+      type_name(((t_map*)ttype)->get_val_type(), true, false) << "> " << iter <<
       " : " <<
-      prefix << ".keySet())";
+      prefix << ".entrySet())";
   } else if (ttype->is_set()) {
     indent(out) <<
       "for (" <<
@@ -2296,17 +2970,16 @@ void t_java_generator::generate_serialize_container(ofstream& out,
       prefix << ")";
   }
 
-    scope_up(out);
-
-    if (ttype->is_map()) {
-      generate_serialize_map_element(out, (t_map*)ttype, iter, prefix);
-    } else if (ttype->is_set()) {
-      generate_serialize_set_element(out, (t_set*)ttype, iter);
-    } else if (ttype->is_list()) {
-      generate_serialize_list_element(out, (t_list*)ttype, iter);
-    }
-
-    scope_down(out);
+  out << endl;
+  scope_up(out);
+  if (ttype->is_map()) {
+    generate_serialize_map_element(out, (t_map*)ttype, iter, prefix);
+  } else if (ttype->is_set()) {
+    generate_serialize_set_element(out, (t_set*)ttype, iter);
+  } else if (ttype->is_list()) {
+    generate_serialize_list_element(out, (t_list*)ttype, iter);
+  }
+  scope_down(out);
 
   if (ttype->is_map()) {
     indent(out) <<
@@ -2329,9 +3002,9 @@ void t_java_generator::generate_serialize_map_element(ofstream& out,
                                                       t_map* tmap,
                                                       string iter,
                                                       string map) {
-  t_field kfield(tmap->get_key_type(), iter);
+  t_field kfield(tmap->get_key_type(), iter + ".getKey()");
   generate_serialize_field(out, &kfield, "");
-  t_field vfield(tmap->get_val_type(), map + ".get(" + iter + ")");
+  t_field vfield(tmap->get_val_type(), iter + ".getValue()");
   generate_serialize_field(out, &vfield, "");
 }
 
@@ -2362,15 +3035,13 @@ void t_java_generator::generate_serialize_list_element(ofstream& out,
  * @param container Is the type going inside a container?
  * @return Java type name, i.e. HashMap<Key,Value>
  */
-string t_java_generator::type_name(t_type* ttype, bool in_container, bool in_init) {
+string t_java_generator::type_name(t_type* ttype, bool in_container, bool in_init, bool skip_generic) {
   // In Java typedefs are just resolved to their real type
   ttype = get_true_type(ttype);
   string prefix;
 
   if (ttype->is_base_type()) {
     return base_type_name((t_base_type*)ttype, in_container);
-  } else if (ttype->is_enum()) {
-    return (in_container ? "Integer" : "int");
   } else if (ttype->is_map()) {
     t_map* tmap = (t_map*) ttype;
     if (in_init) {
@@ -2378,25 +3049,25 @@ string t_java_generator::type_name(t_type* ttype, bool in_container, bool in_ini
     } else {
       prefix = "Map";
     }
-    return prefix + "<" +
+    return prefix + (skip_generic ? "" : "<" +
       type_name(tmap->get_key_type(), true) + "," +
-      type_name(tmap->get_val_type(), true) + ">";
+      type_name(tmap->get_val_type(), true) + ">");
   } else if (ttype->is_set()) {
     t_set* tset = (t_set*) ttype;
     if (in_init) {
-      prefix = "HashSet<";
+      prefix = "HashSet";
     } else {
-      prefix = "Set<";
+      prefix = "Set";
     }
-    return prefix + type_name(tset->get_elem_type(), true) + ">";
+    return prefix + (skip_generic ? "" : "<" + type_name(tset->get_elem_type(), true) + ">");
   } else if (ttype->is_list()) {
     t_list* tlist = (t_list*) ttype;
     if (in_init) {
-      prefix = "ArrayList<";
+      prefix = "ArrayList";
     } else {
-      prefix = "List<";
+      prefix = "List";
     }
-    return prefix + type_name(tlist->get_elem_type(), true) + ">";
+    return prefix + (skip_generic ? "" : "<" + type_name(tlist->get_elem_type(), true) + ">");
   }
 
   // Check for namespacing
@@ -2576,14 +3247,86 @@ string t_java_generator::type_to_enum(t_type* type) {
 }
 
 /**
+ * Applies the correct style to a string based on the value of nocamel_style_
+ */
+std::string t_java_generator::get_cap_name(std::string name){
+  if (nocamel_style_) {
+    return "_" + name;
+  } else {
+    name[0] = toupper(name[0]);
+    return name;
+  }
+}
+
+string t_java_generator::constant_name(string name) {
+  string constant_name;
+
+  bool is_first = true;
+  bool was_previous_char_upper = false;
+  for (string::iterator iter = name.begin(); iter != name.end(); ++iter) {
+    string::value_type character = (*iter);
+
+    bool is_upper = isupper(character);
+
+    if (is_upper && !is_first && !was_previous_char_upper) {
+      constant_name += '_';
+    }
+    constant_name += toupper(character);
+
+    is_first = false;
+    was_previous_char_upper = is_upper;
+  }
+
+  return constant_name;
+}
+
+void t_java_generator::generate_java_docstring_comment(ofstream &out, string contents) {
+  generate_docstring_comment(out,
+    "/**\n",
+    " * ", contents,
+    " */\n");
+}
+
+void t_java_generator::generate_java_doc(ofstream &out,
+                                         t_field* field) {
+  if (field->get_type()->is_enum()) {
+    string combined_message = field->get_doc() + "\n@see " + get_enum_class_name(field->get_type());
+    generate_java_docstring_comment(out, combined_message);
+  } else {
+    generate_java_doc(out, (t_doc*)field);
+  }
+}
+
+/**
  * Emits a JavaDoc comment if the provided object has a doc in Thrift
  */
 void t_java_generator::generate_java_doc(ofstream &out,
                                          t_doc* tdoc) {
   if (tdoc->has_doc()) {
+    generate_java_docstring_comment(out, tdoc->get_doc());
+  }
+}
+
+/**
+ * Emits a JavaDoc comment if the provided function object has a doc in Thrift
+ */
+void t_java_generator::generate_java_doc(ofstream &out,
+                                         t_function* tfunction) {
+  if (tfunction->has_doc()) {
+    stringstream ss;
+    ss << tfunction->get_doc();
+    const vector<t_field*>& fields = tfunction->get_arglist()->get_members();
+    vector<t_field*>::const_iterator p_iter;
+    for (p_iter = fields.begin(); p_iter != fields.end(); ++p_iter) {
+      t_field* p = *p_iter;
+      ss << "\n@param " << p->get_name();
+      if (p->has_doc()) {
+        ss << " " << p->get_doc();
+      }
+    }
     generate_docstring_comment(out,
       "/**\n",
-      " * ", tdoc->get_doc(),
+      " * ", ss.str(),
       " */\n");
   }
 }
@@ -2622,7 +3365,7 @@ void t_java_generator::generate_deep_copy_container(ofstream &out, std::string s
       generate_deep_copy_container(out, iterator_element_name + "_key", "", result_element_name + "_key", key_type);
     } else {
       indent(out) << type_name(key_type, true, false) << " " << result_element_name << "_key = ";
-      generate_deep_copy_non_container(out, iterator_element_name + "_key", key_type);
+      generate_deep_copy_non_container(out, iterator_element_name + "_key", result_element_name + "_key", key_type);
       out << ";" << endl;
     }
 
@@ -2632,7 +3375,7 @@ void t_java_generator::generate_deep_copy_container(ofstream &out, std::string s
       generate_deep_copy_container(out, iterator_element_name + "_value", "", result_element_name + "_value", val_type);
     } else {
       indent(out) << type_name(val_type, true, false) << " " << result_element_name << "_value = ";
-      generate_deep_copy_non_container(out, iterator_element_name + "_value", val_type);
+      generate_deep_copy_non_container(out, iterator_element_name + "_value", result_element_name + "_value", val_type);
       out << ";" << endl;
     }
 
@@ -2663,9 +3406,17 @@ void t_java_generator::generate_deep_copy_container(ofstream &out, std::string s
       indent(out) << result_name << ".add(" << result_element_name << ");" << endl;
     } else {
       // iterative copy
-      indent(out) << result_name << ".add(";
-      generate_deep_copy_non_container(out, iterator_element_name, elem_type);
-      out << ");" << endl;
+      if(((t_base_type*)elem_type)->is_binary()){
+        indent(out) << "byte[] temp_binary_element = ";
+        generate_deep_copy_non_container(out, iterator_element_name, "temp_binary_element", elem_type);
+        out << ";" << endl;
+        indent(out) << result_name << ".add(temp_binary_element);" << endl;
+      }
+      else{
+        indent(out) << result_name << ".add(";
+        generate_deep_copy_non_container(out, iterator_element_name, result_name, elem_type);
+        out << ");" << endl;
+      }
     }
 
     indent_down();
@@ -2675,17 +3426,182 @@ void t_java_generator::generate_deep_copy_container(ofstream &out, std::string s
   }
 }
 
-void t_java_generator::generate_deep_copy_non_container(ofstream& out, std::string source_name, t_type* type) {
+void t_java_generator::generate_deep_copy_non_container(ofstream& out, std::string source_name, std::string dest_name, t_type* type) {
   if (type->is_base_type() || type->is_enum() || type->is_typedef()) {
-    out << source_name;
+    // binary fields need to be copied with System.arraycopy
+    if (((t_base_type*)type)->is_binary()){
+      out << "new byte[" << source_name << ".length];" << endl;
+      indent(out) << "System.arraycopy(" << source_name << ", 0, " << dest_name << ", 0, " << source_name << ".length)";
+    }
+    // everything else can be copied directly
+    else
+      out << source_name;
   } else {
     out << "new " << type_name(type, true, true) << "(" << source_name << ")";
   }
 }
 
+std::string t_java_generator::generate_isset_check(t_field* field) {
+  return generate_isset_check(field->get_name());
+}
+
+std::string t_java_generator::isset_field_id(t_field* field) {
+  return "__" + upcase_string(field->get_name() + "_isset_id");
+}
+
+std::string t_java_generator::generate_isset_check(std::string field_name) {
+  return "is" + get_cap_name("set") + get_cap_name(field_name) + "()";
+}
+
+void t_java_generator::generate_isset_set(ofstream& out, t_field* field) {
+  if (!type_can_be_null(field->get_type())) {
+    indent(out) << "set" << get_cap_name(field->get_name()) << get_cap_name("isSet") << "(true);" << endl;
+  }
+}
+
+std::string t_java_generator::get_enum_class_name(t_type* type) {
+  string package = "";
+  t_program* program = type->get_program();
+  if (program != NULL && program != program_) {
+    package = program->get_namespace("java") + ".";
+  }
+  return package + type->get_name();
+}
+
+void t_java_generator::generate_struct_desc(ofstream& out, t_struct* tstruct) {
+  indent(out) <<
+    "private static final TStruct STRUCT_DESC = new TStruct(\"" << tstruct->get_name() << "\");" << endl;
+}
+
+void t_java_generator::generate_field_descs(ofstream& out, t_struct* tstruct) {
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    indent(out) <<
+      "private static final TField " << constant_name((*m_iter)->get_name()) <<
+      "_FIELD_DESC = new TField(\"" << (*m_iter)->get_name() << "\", " <<
+      type_to_enum((*m_iter)->get_type()) << ", " <<
+      "(short)" << (*m_iter)->get_key() << ");" << endl;
+  }
+}
+
+void t_java_generator::generate_field_name_constants(ofstream& out, t_struct* tstruct) {
+  indent(out) << "/** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */" << endl;
+  indent(out) << "public enum _Fields implements TFieldIdEnum {" << endl;
+
+  indent_up();
+  bool first = true;
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    if (!first) {
+      out << "," << endl;
+    }
+    first = false;
+    generate_java_doc(out, *m_iter);
+    indent(out) << constant_name((*m_iter)->get_name()) << "((short)" << (*m_iter)->get_key() << ", \"" << (*m_iter)->get_name() << "\")";
+  }
+
+  out << ";" << endl << endl;
+
+  indent(out) << "private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();" << endl;
+  indent(out) << "private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();" << endl;
+  out << endl;
+
+  indent(out) << "static {" << endl;
+  indent(out) << "  for (_Fields field : EnumSet.allOf(_Fields.class)) {" << endl;
+  indent(out) << "    byId.put((int)field._thriftId, field);" << endl;
+  indent(out) << "    byName.put(field.getFieldName(), field);" << endl;
+  indent(out) << "  }" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "/**" << endl;
+  indent(out) << " * Find the _Fields constant that matches fieldId, or null if its not found." << endl;
+  indent(out) << " */" << endl;
+  indent(out) << "public static _Fields findByThriftId(int fieldId) {" << endl;
+  indent(out) << "  return byId.get(fieldId);" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "/**" << endl;
+  indent(out) << " * Find the _Fields constant that matches fieldId, throwing an exception" << endl;
+  indent(out) << " * if it is not found." << endl;
+  indent(out) << " */" << endl;
+  indent(out) << "public static _Fields findByThriftIdOrThrow(int fieldId) {" << endl;
+  indent(out) << "  _Fields fields = findByThriftId(fieldId);" << endl;
+  indent(out) << "  if (fields == null) throw new IllegalArgumentException(\"Field \" + fieldId + \" doesn't exist!\");" << endl;
+  indent(out) << "  return fields;" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "/**" << endl;
+  indent(out) << " * Find the _Fields constant that matches name, or null if its not found." << endl;
+  indent(out) << " */" << endl;
+  indent(out) << "public static _Fields findByName(String name) {" << endl;
+  indent(out) << "  return byName.get(name);" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "private final short _thriftId;" << endl;
+  indent(out) << "private final String _fieldName;" << endl << endl;
+
+  indent(out) << "_Fields(short thriftId, String fieldName) {" << endl;
+  indent(out) << "  _thriftId = thriftId;" << endl;
+  indent(out) << "  _fieldName = fieldName;" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "public short getThriftFieldId() {" << endl;
+  indent(out) << "  return _thriftId;" << endl;
+  indent(out) << "}" << endl << endl;
+
+  indent(out) << "public String getFieldName() {" << endl;
+  indent(out) << "  return _fieldName;" << endl;
+  indent(out) << "}" << endl;
+
+  indent_down();
+
+  indent(out) << "}" << endl;
+}
+
+bool t_java_generator::is_comparable(t_struct* tstruct) {
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    if (!is_comparable(get_true_type((*m_iter)->get_type()))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool t_java_generator::is_comparable(t_type* type) {
+  if (type->is_container()) {
+    if (type->is_list()) {
+      return is_comparable(get_true_type(((t_list*)type)->get_elem_type()));
+    } else {
+      return false;
+    }
+  } else if (type->is_struct()) {
+    return is_comparable((t_struct*)type);
+  } else {
+    return true;
+  }
+}
+
+bool t_java_generator::has_bit_vector(t_struct* tstruct) {
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    if (!type_can_be_null(get_true_type((*m_iter)->get_type()))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 THRIFT_REGISTER_GENERATOR(java, "Java",
 "    beans:           Generate bean-style output files.\n"
 "    nocamel:         Do not use CamelCase field accessors with beans.\n"
 "    hashcode:        Generate quality hashCode methods.\n"
 );
+

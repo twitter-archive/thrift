@@ -1,3 +1,22 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
 require 'thrift'
 
 module Fixtures
@@ -8,6 +27,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::BOOL, :name => 'bool'}
       }
+
+      def validate
+      end
     end
     
     class OneByte
@@ -16,6 +38,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::BYTE, :name => 'byte'}
       }
+
+      def validate
+      end
     end
     
     class OneI16
@@ -24,6 +49,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::I16, :name => 'i16'}
       }
+
+      def validate
+      end
     end
     
     class OneI32
@@ -32,6 +60,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::I32, :name => 'i32'}
       }
+
+      def validate
+      end
     end
     
     class OneI64
@@ -40,6 +71,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::I64, :name => 'i64'}
       }
+
+      def validate
+      end
     end
     
     class OneDouble
@@ -48,6 +82,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::DOUBLE, :name => 'double'}
       }
+
+      def validate
+      end
     end
     
     class OneString
@@ -56,6 +93,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::STRING, :name => 'string'}
       }
+
+      def validate
+      end
     end
     
     class OneMap
@@ -64,6 +104,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::MAP, :name => 'map', :key => {:type => Thrift::Types::STRING}, :value => {:type => Thrift::Types::STRING}}
       }
+
+      def validate
+      end
     end
     
     class NestedMap
@@ -72,6 +115,9 @@ module Fixtures
       FIELDS = {
         0 => {:type => Thrift::Types::MAP, :name => 'map', :key => {:type => Thrift::Types::I32}, :value => {:type => Thrift::Types::MAP, :key => {:type => Thrift::Types::I32}, :value => {:type => Thrift::Types::I32}}}
       }
+
+      def validate
+      end
     end
     
     class OneList
@@ -80,6 +126,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::LIST, :name => 'list', :element => {:type => Thrift::Types::STRING}}
       }
+
+      def validate
+      end
     end
     
     class NestedList
@@ -88,6 +137,9 @@ module Fixtures
       FIELDS = {
         0 => {:type => Thrift::Types::LIST, :name => 'list', :element => {:type => Thrift::Types::LIST, :element => { :type => Thrift::Types::I32 } } }
       }
+
+      def validate
+      end
     end
     
     class OneSet
@@ -96,6 +148,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::SET, :name => 'set', :element => {:type => Thrift::Types::STRING}}
       }
+
+      def validate
+      end
     end
     
     class NestedSet
@@ -104,6 +159,9 @@ module Fixtures
       FIELDS = {
         1 => {:type => Thrift::Types::SET, :name => 'set', :element => {:type => Thrift::Types::SET, :element => { :type => Thrift::Types::STRING } }}
       }
+
+      def validate
+      end
     end
     
     # struct OneOfEach {
@@ -144,6 +202,9 @@ module Fixtures
         end
         true
       end
+
+      def validate
+      end
     end
 
     # struct Nested1 {
@@ -163,6 +224,9 @@ module Fixtures
         4 => {:type => Thrift::Types::MAP, :name => 'dbl_map', :key => {:type => Thrift::Types::DOUBLE}, :value => {:type => Thrift::Types::STRUCT, :class => OneOfEach}},
         5 => {:type => Thrift::Types::MAP, :name => 'str_map', :key => {:type => Thrift::Types::STRING}, :value => {:type => Thrift::Types::STRUCT, :class => OneOfEach}}
       }
+
+      def validate
+      end
     end
 
     # struct Nested2 {
@@ -182,6 +246,9 @@ module Fixtures
         4 => {:type => Thrift::Types::MAP, :name => 'dbl_map', :key => {:type => Thrift::Types::DOUBLE}, :value => {:type => Thrift::Types::STRUCT, :class => Nested1}},
         5 => {:type => Thrift::Types::MAP, :name => 'str_map', :key => {:type => Thrift::Types::STRING}, :value => {:type => Thrift::Types::STRUCT, :class => Nested1}}
       }
+
+      def validate
+      end
     end
 
     # struct Nested3 {
@@ -201,6 +268,9 @@ module Fixtures
         4 => {:type => Thrift::Types::MAP, :name => 'dbl_map', :key => {:type => Thrift::Types::DOUBLE}, :value => {:type => Thrift::Types::STRUCT, :class => Nested2}},
         5 => {:type => Thrift::Types::MAP, :name => 'str_map', :key => {:type => Thrift::Types::STRING}, :value => {:type => Thrift::Types::STRUCT, :class => Nested2}}
       }
+
+      def validate
+      end
     end
 
     # struct Nested4 {
@@ -220,6 +290,9 @@ module Fixtures
         4 => {:type => Thrift::Types::MAP, :name => 'dbl_map', :key => {:type => Thrift::Types::DOUBLE}, :value => {:type => Thrift::Types::STRUCT, :class => Nested3}},
         5 => {:type => Thrift::Types::MAP, :name => 'str_map', :key => {:type => Thrift::Types::STRING}, :value => {:type => Thrift::Types::STRUCT, :class => Nested3}}
       }
+
+      def validate
+      end
     end
   end
 end

@@ -25,9 +25,13 @@ dnl       but it can be easily modified to allow it.  (grep "cross").
 dnl
 dnl @category InstalledPackages
 dnl @category C
-dnl @author David Reiss <dreiss@facebook.com>
 dnl @version 2007-09-12
 dnl @license AllPermissive
+dnl
+dnl Copyright (C) 2009 David Reiss
+dnl Copying and distribution of this file, with or without modification,
+dnl are permitted in any medium without royalty provided the copyright
+dnl notice and this notice are preserved.
 
 dnl Input: ax_libevent_path, WANT_LIBEVENT_VERSION
 dnl Output: success=yes/no
@@ -79,12 +83,32 @@ AC_DEFUN([AX_LIB_EVENT_DO_CHECK],
           const char* wnt_version = "$WANT_LIBEVENT_VERSION";
           for (;;) {
             /* If we reached the end of the want version.  We have it. */
-            if (*wnt_version == '\0') {
+            if (*wnt_version == '\0' || *wnt_version == '-') {
               return 0;
             }
             /* If the want version continues but the lib version does not, */
             /* we are missing a letter.  We don't have it. */
-            if (*lib_version == '\0') {
+            if (*lib_version == '\0' || *lib_version == '-') {
+              return 1;
+            }
+            /* In the 1.4 version numbering style, if there are more digits */
+            /* in one version than the other, that one is higher. */
+            int lib_digits;
+            for (lib_digits = 0;
+                lib_version[lib_digits] >= '0' &&
+                lib_version[lib_digits] <= '9';
+                lib_digits++)
+              ;
+            int wnt_digits;
+            for (wnt_digits = 0;
+                wnt_version[wnt_digits] >= '0' &&
+                wnt_version[wnt_digits] <= '9';
+                wnt_digits++)
+              ;
+            if (lib_digits > wnt_digits) {
+              return 0;
+            }
+            if (lib_digits < wnt_digits) {
               return 1;
             }
             /* If we have greater than what we want.  We have it. */
@@ -141,7 +165,7 @@ AC_DEFUN([AX_LIB_EVENT],
             if test -n "$ax_libevent_path"; then
               AX_LIB_EVENT_DO_CHECK
             else
-              for ax_libevent_path in "" /usr /usr/local /opt /opt/libevent "$LIBEVENT_ROOT" ; do
+              for ax_libevent_path in "" /usr /usr/local /opt /opt/local /opt/libevent "$LIBEVENT_ROOT" ; do
                 AX_LIB_EVENT_DO_CHECK
                 if test "$success" = "yes"; then
                   break;
@@ -157,6 +181,7 @@ AC_DEFUN([AX_LIB_EVENT],
             else
               AC_MSG_RESULT(yes)
               AC_DEFINE(HAVE_LIBEVENT,,[define if libevent is available])
+              ax_have_libevent_[]m4_translit([$1], [.], [_])="yes"
             fi
 
             ax_have_libevent="$success"

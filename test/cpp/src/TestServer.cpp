@@ -1,3 +1,22 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include <concurrency/ThreadManager.h>
 #include <concurrency/PosixThreadFactory.h>
 #include <protocol/TBinaryProtocol.h>
@@ -19,11 +38,11 @@
 using namespace std;
 using namespace boost;
 
-using namespace facebook::thrift;
-using namespace facebook::thrift::concurrency;
-using namespace facebook::thrift::protocol;
-using namespace facebook::thrift::transport;
-using namespace facebook::thrift::server;
+using namespace apache::thrift;
+using namespace apache::thrift::concurrency;
+using namespace apache::thrift::protocol;
+using namespace apache::thrift::transport;
+using namespace apache::thrift::server;
 
 using namespace thrift::test;
 
@@ -223,16 +242,16 @@ class TestHandler : public ThriftTestIf {
   }
 
   void testException(const std::string &arg)
-    throw(Xception, facebook::thrift::TException)
+    throw(Xception, apache::thrift::TException)
   {
     printf("testException(%s)\n", arg.c_str());
     if (arg.compare("Xception") == 0) {
       Xception e;
       e.errorCode = 1001;
-      e.message = "This is an Xception";
+      e.message = arg;
       throw e;
     } else if (arg.compare("ApplicationException") == 0) {
-      facebook::thrift::TException e;
+      apache::thrift::TException e;
       throw e;
     } else {
       Xtruct result;
@@ -261,10 +280,10 @@ class TestHandler : public ThriftTestIf {
     }
   }
 
-  void testAsync(int sleepFor) {
-    printf("testAsync(%d): Sleeping...\n", sleepFor);
+  void testOneway(int sleepFor) {
+    printf("testOneway(%d): Sleeping...\n", sleepFor);
     sleep(sleepFor);
-    printf("testAsync(%d): done sleeping!\n", sleepFor);
+    printf("testOneway(%d): done sleeping!\n", sleepFor);
   }
 };
 

@@ -1,8 +1,21 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include "TJSONProtocol.h"
 
@@ -11,9 +24,9 @@
 #include "TBase64Utils.h"
 #include <transport/TTransportException.h>
 
-using namespace facebook::thrift::transport;
+using namespace apache::thrift::transport;
 
-namespace facebook { namespace thrift { namespace protocol {
+namespace apache { namespace thrift { namespace protocol {
 
 
 // Static data
@@ -32,7 +45,7 @@ static const uint8_t kJSONEscapeChar = 'u';
 
 static const std::string kJSONEscapePrefix("\\u00");
 
-static const uint8_t kThriftVersion1 = 1;
+static const uint32_t kThriftVersion1 = 1;
 
 static const std::string kThriftNan("NaN");
 static const std::string kThriftInfinity("Infinity");
@@ -874,7 +887,7 @@ uint32_t TJSONProtocol::readFieldBegin(std::string& name,
   // Check if we hit the end of the list
   uint8_t ch = reader_.peek();
   if (ch == kJSONObjectEnd) {
-    fieldType = facebook::thrift::protocol::T_STOP;
+    fieldType = apache::thrift::protocol::T_STOP;
   }
   else {
     uint64_t tmpVal = 0;
@@ -982,4 +995,4 @@ uint32_t TJSONProtocol::readBinary(std::string &str) {
   return readJSONBase64(str);
 }
 
-}}} // facebook::thrift::protocol
+}}} // apache::thrift::protocol

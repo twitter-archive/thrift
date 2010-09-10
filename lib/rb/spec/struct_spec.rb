@@ -1,5 +1,23 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
 require File.dirname(__FILE__) + '/spec_helper'
-require File.dirname(__FILE__) + '/gen-rb/ThriftSpec_types'
 
 class ThriftStructSpec < Spec::ExampleGroup
   include Thrift
@@ -8,16 +26,8 @@ class ThriftStructSpec < Spec::ExampleGroup
   describe Struct do
     it "should iterate over all fields properly" do
       fields = {}
-      Foo.new.each_field { |fid,type,name,default,optional| fields[fid] = [type,name,default,optional] }
-      fields.should == {
-        1 => [Types::I32, 'simple', 53, nil],
-        2 => [Types::STRING, 'words', "words", nil],
-        3 => [Types::STRUCT, 'hello', Hello.new(:greeting => 'hello, world!'), nil],
-        4 => [Types::LIST, 'ints', [1, 2, 2, 3], nil],
-        5 => [Types::MAP, 'complex', nil, nil],
-        6 => [Types::SET, 'shorts', Set.new([5, 17, 239]), nil],
-        7 => [Types::STRING, 'opt_string', nil, true]
-      }
+      Foo.new.each_field { |fid,field_info| fields[fid] = field_info }
+      fields.should == Foo::FIELDS
     end
 
     it "should initialize all fields to defaults" do
@@ -54,7 +64,7 @@ class ThriftStructSpec < Spec::ExampleGroup
 
     it "should read itself off the wire" do
       struct = Foo.new
-      prot = mock("Protocol")
+      prot = BaseProtocol.new(mock("transport"))
       prot.should_receive(:read_struct_begin).twice
       prot.should_receive(:read_struct_end).twice
       prot.should_receive(:read_field_begin).and_return(
@@ -79,14 +89,14 @@ class ThriftStructSpec < Spec::ExampleGroup
       prot.should_receive(:read_list_end)
       prot.should_receive(:read_set_begin).and_return([Types::I16, 2])
       prot.should_receive(:read_set_end)
-      prot.should_receive(:read_type).with(Types::I32).and_return(
+      prot.should_receive(:read_i32).and_return(
         1, 14,        # complex keys
         42,           # simple
         4, 23, 4, 29  # ints
       )
-      prot.should_receive(:read_type).with(Types::STRING).and_return("pi", "e", "feigenbaum", "apple banana", "what's up?")
-      prot.should_receive(:read_type).with(Types::DOUBLE).and_return(Math::PI, Math::E, 4.669201609)
-      prot.should_receive(:read_type).with(Types::I16).and_return(2, 3)
+      prot.should_receive(:read_string).and_return("pi", "e", "feigenbaum", "apple banana", "what's up?")
+      prot.should_receive(:read_double).and_return(Math::PI, Math::E, 4.669201609)
+      prot.should_receive(:read_i16).and_return(2, 3)
       prot.should_not_receive(:skip)
       struct.read(prot)
 
@@ -100,7 +110,7 @@ class ThriftStructSpec < Spec::ExampleGroup
 
     it "should skip unexpected fields in structs and use default values" do
       struct = Foo.new
-      prot = mock("Protocol")
+      prot = BaseProtocol.new(mock("transport"))
       prot.should_receive(:read_struct_begin)
       prot.should_receive(:read_struct_end)
       prot.should_receive(:read_field_begin).and_return(
@@ -112,10 +122,12 @@ class ThriftStructSpec < Spec::ExampleGroup
         [nil, Types::STOP, 0]
       )
       prot.should_receive(:read_field_end).exactly(5).times
-      prot.should_receive(:read_type).with(Types::I32).and_return(42)
-      prot.should_receive(:read_type).with(Types::STRING).and_return("foobar")
+      prot.should_receive(:read_i32).and_return(42)
+      prot.should_receive(:read_string).and_return("foobar")
       prot.should_receive(:skip).with(Types::STRUCT)
       prot.should_receive(:skip).with(Types::MAP)
+      # prot.should_receive(:read_map_begin).and_return([Types::I32, Types::I32, 0])
+      # prot.should_receive(:read_map_end)
       prot.should_receive(:skip).with(Types::I32)
       struct.read(prot)
 
@@ -128,31 +140,35 @@ class ThriftStructSpec < Spec::ExampleGroup
     end
 
     it "should write itself to the wire" do
-      prot = mock("Protocol")
+      prot = BaseProtocol.new(mock("transport")) #mock("Protocol")
       prot.should_receive(:write_struct_begin).with("SpecNamespace::Foo")
-      prot.should_receive(:write_struct_end)
+      prot.should_receive(:write_struct_begin).with("SpecNamespace::Hello")
+      prot.should_receive(:write_struct_end).twice
       prot.should_receive(:write_field_begin).with('ints', Types::LIST, 4)
+      prot.should_receive(:write_i32).with(1)
+      prot.should_receive(:write_i32).with(2).twice
+      prot.should_receive(:write_i32).with(3)
       prot.should_receive(:write_field_begin).with('complex', Types::MAP, 5)
+      prot.should_receive(:write_i32).with(5)
+      prot.should_receive(:write_string).with('foo')
+      prot.should_receive(:write_double).with(1.23)
       prot.should_receive(:write_field_begin).with('shorts', Types::SET, 6)
-      prot.should_receive(:write_field_stop)
-      prot.should_receive(:write_field_end).exactly(3).times
-      prot.should_receive(:write_field).with('simple', Types::I32, 1, 53)
-      prot.should_receive(:write_field).with('hello', Types::STRUCT, 3, Hello.new(:greeting => 'hello, world!'))
+      prot.should_receive(:write_i16).with(5)
+      prot.should_receive(:write_i16).with(17)
+      prot.should_receive(:write_i16).with(239)
+      prot.should_receive(:write_field_stop).twice
+      prot.should_receive(:write_field_end).exactly(6).times
+      prot.should_receive(:write_field_begin).with('simple', Types::I32, 1)
+      prot.should_receive(:write_i32).with(53)
+      prot.should_receive(:write_field_begin).with('hello', Types::STRUCT, 3)
+      prot.should_receive(:write_field_begin).with('greeting', Types::STRING, 1)
+      prot.should_receive(:write_string).with('hello, world!')
       prot.should_receive(:write_map_begin).with(Types::I32, Types::MAP, 1)
       prot.should_receive(:write_map_begin).with(Types::STRING, Types::DOUBLE, 1)
-      prot.should_receive(:write_type).with(Types::I32, 5) # complex/1/key
-      prot.should_receive(:write_type).with(Types::STRING, "foo") # complex/1/value/1/key
-      prot.should_receive(:write_type).with(Types::DOUBLE, 1.23) # complex/1/value/1/value
       prot.should_receive(:write_map_end).twice
       prot.should_receive(:write_list_begin).with(Types::I32, 4)
-      prot.should_receive(:write_type).with(Types::I32, 1)
-      prot.should_receive(:write_type).with(Types::I32, 2).twice
-      prot.should_receive(:write_type).with(Types::I32, 3)
       prot.should_receive(:write_list_end)
       prot.should_receive(:write_set_begin).with(Types::I16, 3)
-      prot.should_receive(:write_type).with(Types::I16, 5)
-      prot.should_receive(:write_type).with(Types::I16, 17)
-      prot.should_receive(:write_type).with(Types::I16, 239)
       prot.should_receive(:write_set_end)
 
       struct = Foo.new
@@ -199,12 +215,15 @@ class ThriftStructSpec < Spec::ExampleGroup
         e.message.should == "something happened"
         e.code.should == 1
         # ensure it gets serialized properly, this is the really important part
-        prot = mock("Protocol")
+        prot = BaseProtocol.new(mock("trans"))
         prot.should_receive(:write_struct_begin).with("SpecNamespace::Xception")
         prot.should_receive(:write_struct_end)
-        prot.should_receive(:write_field).with('message', Types::STRING, 1, "something happened")
-        prot.should_receive(:write_field).with('code', Types::I32, 2, 1)
+        prot.should_receive(:write_field_begin).with('message', Types::STRING, 1)#, "something happened")
+        prot.should_receive(:write_string).with("something happened")
+        prot.should_receive(:write_field_begin).with('code', Types::I32, 2)#, 1)
+        prot.should_receive(:write_i32).with(1)
         prot.should_receive(:write_field_stop)
+        prot.should_receive(:write_field_end).twice
 
         e.write(prot)
       end
@@ -216,12 +235,15 @@ class ThriftStructSpec < Spec::ExampleGroup
       rescue Thrift::Exception => e
         e.message.should == "something happened"
         e.code.should == 5
-        prot = mock("Protocol")
+        prot = BaseProtocol.new(mock("trans"))
         prot.should_receive(:write_struct_begin).with("SpecNamespace::Xception")
         prot.should_receive(:write_struct_end)
-        prot.should_receive(:write_field).with('message', Types::STRING, 1, "something happened")
-        prot.should_receive(:write_field).with('code', Types::I32, 2, 5)
+        prot.should_receive(:write_field_begin).with('message', Types::STRING, 1)
+        prot.should_receive(:write_string).with("something happened")
+        prot.should_receive(:write_field_begin).with('code', Types::I32, 2)
+        prot.should_receive(:write_i32).with(5)
         prot.should_receive(:write_field_stop)
+        prot.should_receive(:write_field_end).twice
 
         e.write(prot)
       end

@@ -1,13 +1,26 @@
-Thrift (Thrift IDL and RPC tool)
+Apache Thrift (an Apache Incubator project)
 
-Mark Slee (mcslee@facebook.com)
-Marc Kwiatkowski (marc@facebook.com)
-Aditya Agarwal (aditya@facebook.com)
+Last Modified: 2009-Jan-30
 
-Last Modified: 2007-Mar-06
+License
+=======
 
-Thrift is distributed under the Thrift open source software license.
-Please see the included LICENSE file.
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements. See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership. The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License. You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied. See the License for the
+specific language governing permissions and limitations
+under the License.
 
 Introduction
 ============
@@ -57,29 +70,21 @@ thrift/
 Requirements
 ============
 
-Thrift requires boost shared pointers from boost-1.33.1 or greater, see:
-http://www.boost.org/libs/smart_ptr/smart_ptr.htm
-
-Some portions of Thrift also depend upon libevent, see:
-http://monkey.org/~provos/libevent/
-
-Some portions of Thrift also depend upon zlib, see:
-http://www.zlib.net/
-
-These libraries are open source and may be freely obtained, but they are not
-provided as a part of this distribution.
+See http://wiki.apache.org/thrift/ThriftRequirements for
+an up-to-date list of build requirements.
 
 Resources
 =========
 
 More information about Thrift can be obtained on the Thrift webpage at:
 
-     http://developers.facebook.com/thrift
+     http://incubator.apache.org/thrift
 
 Acknowledgments
 ===============
 
-Thrift was inspired by pillar, a lightweight RPC tool written by Adam D'Angelo.
+Thrift was inspired by pillar, a lightweight RPC tool written by Adam D'Angelo,
+and also by Google's protocol buffers.
 
 Installation
 ============

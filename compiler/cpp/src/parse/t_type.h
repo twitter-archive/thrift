@@ -1,14 +1,29 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #ifndef T_TYPE_H
 #define T_TYPE_H
 
 #include <string>
+#include <map>
 #include <cstring>
+#include <stdint.h>
 #include "t_doc.h"
 
 // What's worse?  This, or making a src/parse/non_inlined.cc?
@@ -23,7 +38,6 @@ class t_program;
  * used by the code generator to branch based upon different handling for the
  * various types.
  *
- * @author Mark Slee <mcslee@facebook.com>
  */
 class t_type : public t_doc {
  public:
@@ -114,6 +128,7 @@ class t_type : public t_doc {
     return rv;
   }
 
+  std::map<std::string, std::string> annotations_;
 
  protected:
   t_type() :
@@ -146,6 +161,16 @@ class t_type : public t_doc {
   std::string name_;
 
   uint8_t fingerprint_[fingerprint_len];
+};
+
+
+/**
+ * Placeholder struct for returning the key and value of an annotation
+ * during parsing.
+ */
+struct t_annotation {
+  std::string key;
+  std::string val;
 };
 
 #endif

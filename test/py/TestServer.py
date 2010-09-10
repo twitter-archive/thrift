@@ -1,5 +1,24 @@
 #!/usr/bin/env python
 
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements. See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership. The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
 import sys, glob, time
 sys.path.insert(0, './gen-py')
 sys.path.insert(0, glob.glob('../../lib/py/build/lib.*')[0])
@@ -9,7 +28,7 @@ from ThriftTest.ttypes import *
 from thrift.transport import TTransport
 from thrift.transport import TSocket
 from thrift.protocol import TBinaryProtocol
-from thrift.server import TServer, TNonblockingServer
+from thrift.server import TServer, TNonblockingServer, THttpServer
 
 class TestHandler:
 
@@ -54,8 +73,8 @@ class TestHandler:
     elif str == "throw_undeclared":
       raise ValueError("foo")
 
-  def testAsync(self, seconds):
-    print 'testAsync(%d) => sleeping...' % seconds
+  def testOneway(self, seconds):
+    print 'testOneway(%d) => sleeping...' % seconds
     time.sleep(seconds)
     print 'done sleeping'
 
@@ -77,15 +96,20 @@ class TestHandler:
   def testTypedef(self, thing):
     return thing
 
+pfactory = TBinaryProtocol.TBinaryProtocolFactory()
 handler = TestHandler()
 processor = ThriftTest.Processor(handler)
-transport = TSocket.TServerSocket(9090)
-tfactory = TTransport.TBufferedTransportFactory()
-pfactory = TBinaryProtocol.TBinaryProtocolFactory()
 
-if sys.argv[1] == "TNonblockingServer":
-  server = TNonblockingServer.TNonblockingServer(processor, transport)
+if sys.argv[1] == "THttpServer":
+  server = THttpServer.THttpServer(processor, ('', 9090), pfactory)
 else:
-  ServerClass = getattr(TServer, sys.argv[1])
-  server = ServerClass(processor, transport, tfactory, pfactory)
+  transport = TSocket.TServerSocket(9090)
+  tfactory = TTransport.TBufferedTransportFactory()
+
+  if sys.argv[1] == "TNonblockingServer":
+    server = TNonblockingServer.TNonblockingServer(processor, transport)
+  else:
+    ServerClass = getattr(TServer, sys.argv[1])
+    server = ServerClass(processor, transport, tfactory, pfactory)
+
 server.serve()

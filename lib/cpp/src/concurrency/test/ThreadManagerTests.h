@@ -1,8 +1,21 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include <config.h>
 #include <concurrency/ThreadManager.h>
@@ -16,14 +29,13 @@
 #include <set>
 #include <stdint.h>
 
-namespace facebook { namespace thrift { namespace concurrency { namespace test {
+namespace apache { namespace thrift { namespace concurrency { namespace test {
 
-using namespace facebook::thrift::concurrency;
+using namespace apache::thrift::concurrency;
 
 /**
  * ThreadManagerTests class
  *
- * @author marc
  * @version $Id:$
  */
 class ThreadManagerTests {
@@ -270,7 +282,19 @@ public:
       try {
         threadManager->add(extraTask, 1);
         throw TException("Unexpected success adding task in excess of pending task count");
+      } catch(TooManyPendingTasksException& e) {
+        throw TException("Should have timed out adding task in excess of pending task count");
       } catch(TimedOutException& e) {
+        // Expected result
+      }
+
+      try {
+        threadManager->add(extraTask, -1);
+        throw TException("Unexpected success adding task in excess of pending task count");
+      } catch(TimedOutException& e) {
+        throw TException("Unexpected timeout adding task in excess of pending task count");
+      } catch(TooManyPendingTasksException& e) {
+        // Expected result
       }
 
       std::cout << "\t\t\t" << "Pending tasks " << threadManager->pendingTaskCount()  << std::endl;
@@ -339,6 +363,7 @@ public:
       }
 
     } catch(TException& e) {
+      std::cout << "ERROR: " << e.what() << std::endl;
     }
 
     std::cout << "\t\t\t" << (success ? "Success" : "Failure") << std::endl;
@@ -348,7 +373,7 @@ public:
 
 const double ThreadManagerTests::ERROR = .20;
 
-}}}} // facebook::thrift::concurrency
+}}}} // apache::thrift::concurrency
 
-using namespace facebook::thrift::concurrency::test;
+using namespace apache::thrift::concurrency::test;
 

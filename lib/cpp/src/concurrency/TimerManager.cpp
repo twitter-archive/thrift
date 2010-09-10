@@ -1,8 +1,21 @@
-// Copyright (c) 2006- Facebook
-// Distributed under the Thrift Software License
-//
-// See accompanying file LICENSE or visit the Thrift site at:
-// http://developers.facebook.com/thrift/
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include "TimerManager.h"
 #include "Exception.h"
@@ -12,17 +25,13 @@
 #include <iostream>
 #include <set>
 
-namespace facebook { namespace thrift { namespace concurrency {
+namespace apache { namespace thrift { namespace concurrency {
 
 using boost::shared_ptr;
-
-typedef std::multimap<int64_t, shared_ptr<TimerManager::Task> >::iterator task_iterator;
-typedef std::pair<task_iterator, task_iterator> task_range;
 
 /**
  * TimerManager class
  *
- * @author marc
  * @version $Id:$
  */
 class TimerManager::Task : public Runnable {
@@ -199,9 +208,7 @@ void TimerManager::stop() {
 
   if (doStop) {
     // Clean up any outstanding tasks
-    for (task_iterator ix =  taskMap_.begin(); ix != taskMap_.end(); ix++) {
-      taskMap_.erase(ix);
-    }
+    taskMap_.clear();
 
     // Remove dispatcher's reference to us.
     dispatcher_->manager_ = NULL;
@@ -232,13 +239,18 @@ void TimerManager::add(shared_ptr<Runnable> task, int64_t timeout) {
       throw IllegalStateException();
     }
 
+    // If the task map is empty, we will kick the dispatcher for sure. Otherwise, we kick him
+    // if the expiration time is shorter than the current value. Need to test before we insert,
+    // because the new task might insert at the front.
+    bool notifyRequired = (taskCount_ == 0) ? true : timeout < taskMap_.begin()->first;
+
     taskCount_++;
     taskMap_.insert(std::pair<int64_t, shared_ptr<Task> >(timeout, shared_ptr<Task>(new Task(task))));
 
     // If the task map was empty, or if we have an expiration that is earlier
     // than any previously seen, kick the dispatcher so it can update its
     // timeout
-    if (taskCount_ == 1 || timeout < taskMap_.begin()->first) {
+    if (notifyRequired) {
       monitor_.notify();
     }
   }
@@ -268,5 +280,5 @@ void TimerManager::remove(shared_ptr<Runnable> task) {
 
 const TimerManager::STATE TimerManager::state() const { return state_; }
 
-}}} // facebook::thrift::concurrency
+}}} // apache::thrift::concurrency
 
