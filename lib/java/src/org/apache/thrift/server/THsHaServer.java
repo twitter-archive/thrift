@@ -42,11 +42,6 @@ public class THsHaServer extends TNonblockingServer {
   // for the passing of Invocations from the Selector to workers.
   private ExecutorService invoker;
 
-  protected final int MIN_WORKER_THREADS;
-  protected final int MAX_WORKER_THREADS;
-  protected final int STOP_TIMEOUT_VAL;
-  protected final TimeUnit STOP_TIMEOUT_UNIT;
-
   /**
    * Create server with given processor, and server transport. Default server
    * options, TBinaryProtocol for the protocol, and TFramedTransport.Factory on
@@ -112,8 +107,10 @@ public class THsHaServer extends TNonblockingServer {
                       TNonblockingServerTransport serverTransport,
                       TProtocolFactory protocolFactory,
                       Options options) {
-    this(processor, serverTransport, new TFramedTransport.Factory(),
-      protocolFactory);
+    this(new TProcessorFactory(processor), serverTransport,
+      new TFramedTransport.Factory(),
+      protocolFactory, protocolFactory, 
+      options);
   }
 
   /**
@@ -139,7 +136,7 @@ public class THsHaServer extends TNonblockingServer {
                       TFramedTransport.Factory transportFactory,
                       TProtocolFactory protocolFactory) {
     this(processorFactory, serverTransport,
-      transportFactory, transportFactory,
+      transportFactory,
       protocolFactory, protocolFactory, new Options());
   }
 
@@ -153,7 +150,7 @@ public class THsHaServer extends TNonblockingServer {
                       TProtocolFactory protocolFactory,
                       Options options) {
     this(processorFactory, serverTransport,
-      transportFactory, transportFactory,
+      transportFactory,
       protocolFactory, protocolFactory,
       options);
   }
@@ -163,12 +160,11 @@ public class THsHaServer extends TNonblockingServer {
    */
   public THsHaServer( TProcessor processor,
                       TNonblockingServerTransport serverTransport,
-                      TFramedTransport.Factory inputTransportFactory,
                       TFramedTransport.Factory outputTransportFactory,
                       TProtocolFactory inputProtocolFactory,
                       TProtocolFactory outputProtocolFactory) {
     this(new TProcessorFactory(processor), serverTransport,
-      inputTransportFactory, outputTransportFactory,
+      outputTransportFactory,
       inputProtocolFactory, outputProtocolFactory);
   }
 
@@ -177,45 +173,55 @@ public class THsHaServer extends TNonblockingServer {
    */
   public THsHaServer( TProcessorFactory processorFactory,
                       TNonblockingServerTransport serverTransport,
-                      TFramedTransport.Factory inputTransportFactory,
                       TFramedTransport.Factory outputTransportFactory,
                       TProtocolFactory inputProtocolFactory,
                       TProtocolFactory outputProtocolFactory)
   {
     this(processorFactory, serverTransport,
-      inputTransportFactory, outputTransportFactory,
+      outputTransportFactory,
       inputProtocolFactory, outputProtocolFactory, new Options());
   }
 
   /**
-   * Create server with every option fully specified.
+   * Create server with every option fully specified, with an internally managed
+   * ExecutorService
    */
   public THsHaServer( TProcessorFactory processorFactory,
                       TNonblockingServerTransport serverTransport,
-                      TFramedTransport.Factory inputTransportFactory,
                       TFramedTransport.Factory outputTransportFactory,
                       TProtocolFactory inputProtocolFactory,
                       TProtocolFactory outputProtocolFactory,
                       Options options)
   {
+    this(processorFactory, serverTransport,
+      outputTransportFactory,
+      inputProtocolFactory, outputProtocolFactory,
+      createInvokerPool(options),
+      options);
+  }
+
+  /**
+   * Create server with every option fully specified, and with an injected
+   * ExecutorService
+   */
+  public THsHaServer( TProcessorFactory processorFactory,
+                      TNonblockingServerTransport serverTransport,
+                      TFramedTransport.Factory outputTransportFactory,
+                      TProtocolFactory inputProtocolFactory,
+                      TProtocolFactory outputProtocolFactory,
+                      ExecutorService executor,
+                      TNonblockingServer.Options options) {
     super(processorFactory, serverTransport,
-      inputTransportFactory, outputTransportFactory,
+      outputTransportFactory,
       inputProtocolFactory, outputProtocolFactory,
       options);
 
-    MIN_WORKER_THREADS = options.minWorkerThreads;
-    MAX_WORKER_THREADS = options.maxWorkerThreads;
-    STOP_TIMEOUT_VAL = options.stopTimeoutVal;
-    STOP_TIMEOUT_UNIT = options.stopTimeoutUnit;
+    invoker = executor;
   }
 
   /** @inheritDoc */
   @Override
   public void serve() {
-    if (!startInvokerPool()) {
-      return;
-    }
-
     // start listening, or exit
     if (!startListening()) {
       return;
@@ -237,13 +243,19 @@ public class THsHaServer extends TNonblockingServer {
     // ungracefully shut down the invoker pool?
   }
 
-  protected boolean startInvokerPool() {
-    // start the invoker pool
-    LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
-    invoker = new ThreadPoolExecutor(MIN_WORKER_THREADS, MAX_WORKER_THREADS,
-      STOP_TIMEOUT_VAL, STOP_TIMEOUT_UNIT, queue);
+  /**
+   * Helper to create an invoker pool
+   */
+  protected static ExecutorService createInvokerPool(Options options) {
+    int workerThreads = options.workerThreads;
+    int stopTimeoutVal = options.stopTimeoutVal;
+    TimeUnit stopTimeoutUnit = options.stopTimeoutUnit;
 
-    return true;
+    LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
+    ExecutorService invoker = new ThreadPoolExecutor(workerThreads, workerThreads,
+      stopTimeoutVal, stopTimeoutUnit, queue);
+
+    return invoker;
   }
 
   protected void gracefullyShutdownInvokerPool() {
@@ -296,8 +308,7 @@ public class THsHaServer extends TNonblockingServer {
   }
 
   public static class Options extends TNonblockingServer.Options {
-    public int minWorkerThreads = 5;
-    public int maxWorkerThreads = Integer.MAX_VALUE;
+    public int workerThreads = 5;
     public int stopTimeoutVal = 60;
     public TimeUnit stopTimeoutUnit = TimeUnit.SECONDS;
   }
